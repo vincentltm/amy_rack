@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// Config.h — AMY Rack central configuration with Tabbed UI layout
+// Config.h — AMY Rack central configuration with Permanent Visualizer & Tab Bar
 // =============================================================================
 
 #include <Arduino.h>
@@ -18,21 +18,27 @@
 #define CV_DAC_I2C_ADDR         0x58    // GP8413 15-bit DAC (CV outputs)
 
 // -----------------------------------------------------------------------------
-// Display — SH1107 128×128 OLED via U8g2 (Tabbed Architecture)
+// Display — SH1107 128×128 OLED (Always-On Visualizer + Mid Tab Bar)
 // -----------------------------------------------------------------------------
 #define SCREEN_WIDTH            128
 #define SCREEN_HEIGHT           128
 
-// UI layout zones (y-coordinates, top-to-bottom)
+// UI layout zones (top-to-bottom)
 #define HEADER_Y                0
-#define HEADER_HEIGHT           12      // Top header: Engine name + Preset name
-#define TAB_BAR_Y               14      // Tab bar start
-#define TAB_BAR_H               12      // Tab bar height (pills)
-#define CONTENT_Y               28      // Content area start (below tabs)
-#define CONTENT_H               90      // Content area height (for visuals or 6 param rows)
-#define PARAM_ROW_H             14      // Height per parameter row in tab view
+#define HEADER_HEIGHT           12      // Top Header: Instrument & Patch
+
+#define VISUALIZER_Y            14      // Top Visualizer zone (Always Present!)
+#define VISUALIZER_H            47      // Visualizer height (47px)
+
+#define TAB_BAR_Y               63      // Mid Tab Bar (Pills under visualizer)
+#define TAB_BAR_H               11      // Tab Bar height
+
+#define PARAM_LIST_Y            76      // Parameter list below Tab Bar
+#define PARAM_LIST_H            42      // Parameter list height
+#define PARAM_ROW_H             10      // 10px per parameter row (4 visible rows)
+
 #define STATUS_BAR_Y            120     // Bottom status bar
-#define STATUS_BAR_H            8       // Status text
+#define STATUS_BAR_H            8
 
 // Fonts (U8g2 font names)
 #define FONT_HEADER             u8g2_font_7x14B_tr
@@ -45,10 +51,10 @@
 // -----------------------------------------------------------------------------
 // Encoder — Adafruit I2C QT Rotary Encoder (seesaw)
 // -----------------------------------------------------------------------------
-#define ENCODER_LONG_PRESS_MS   350     // Snappy 350ms for hierarchy back
-#define ENCODER_ACCEL_THRESHOLD 3       // Delta/poll to trigger acceleration
-#define ENCODER_ACCEL_FACTOR    4       // Multiplier when accelerating
-#define ENCODER_POLL_INTERVAL   20      // ms between encoder reads
+#define ENCODER_LONG_PRESS_MS   350     // Snappy 350ms
+#define ENCODER_ACCEL_THRESHOLD 3
+#define ENCODER_ACCEL_FACTOR    4
+#define ENCODER_POLL_INTERVAL   20
 
 #define SEESAW_ENCODER_PIN      24
 #define SEESAW_BUTTON_PIN       24

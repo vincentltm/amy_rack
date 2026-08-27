@@ -82,29 +82,29 @@ void InstrumentAnalog::drawUI(U8G2 &u8g2) {
     // Osc 1 Box
     uint8_t w1 = (uint8_t)_osc1_wave_f;
     if (w1 > 4) w1 = 0;
-    u8g2.setCursor(8, 38);
+    u8g2.setCursor(8, 23);
     u8g2.printf("OSC1: %s", waveNames[w1]);
-    drawWaveShape(u8g2, 8, 42, 52, 28, w1);
+    drawWaveShape(u8g2, 8, 25, 52, 23, w1);
 
     // Osc 2 Box
     uint8_t w2 = (uint8_t)_osc2_wave_f;
     if (w2 > 4) w2 = 0;
-    u8g2.setCursor(68, 38);
+    u8g2.setCursor(68, 23);
     u8g2.printf("OSC2: %s", waveNames[w2]);
-    drawWaveShape(u8g2, 68, 42, 52, 28, w2);
+    drawWaveShape(u8g2, 68, 25, 52, 23, w2);
 
     // Balance & Detune indicator
-    u8g2.setCursor(8, 86);
+    u8g2.setCursor(8, 57);
     u8g2.print("BAL");
-    u8g2.drawFrame(30, 80, 30, 7);
+    u8g2.drawFrame(30, 51, 30, 7);
     int balX = 30 + (int)((_osc_balance_pct / 100.0f) * 26.0f);
-    u8g2.drawBox(balX, 81, 4, 5);
+    u8g2.drawBox(balX, 52, 4, 5);
 
-    u8g2.setCursor(68, 86);
+    u8g2.setCursor(68, 57);
     u8g2.print("DET");
-    u8g2.drawFrame(90, 80, 30, 7);
+    u8g2.drawFrame(90, 51, 30, 7);
     int detX = 90 + (int)((_osc2_detune_pct / 100.0f) * 26.0f);
-    u8g2.drawBox(detX, 81, 4, 5);
+    u8g2.drawBox(detX, 52, 4, 5);
 }
 
 void InstrumentAnalog::onParamChanged(uint8_t paramIndex) {

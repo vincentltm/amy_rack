@@ -2,6 +2,8 @@
 #include "System.h"
 #include "MidiManager.h"
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
 static void cleanString(char* dest, const char* src, size_t maxLen) {
     if (!src) { dest[0] = '\0'; return; }
@@ -90,22 +92,23 @@ void Display::update(System& sys, MidiManager& midi) {
     u8g2.clearBuffer();
 
     if (inst) {
-        drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch);
+        // 1. Top Header with MIDI activity
+        drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch, midiCh, lastNote, gateActive);
+
+        // 2. Always-On Top Visualizer (y=14..61)
+        drawVisualizerArea(inst, activeTab);
+
+        // 3. Middle Tab Bar (y=63..74)
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
 
-        if (activeTab == TabId::TAB_MAIN) {
-            drawInstrumentUI(inst);
-        } else {
-            uint8_t tabIndices[MAX_PARAMS];
-            for (uint8_t i = 0; i < tabParamCount; i++) {
-                tabIndices[i] = sys.getTabParamRealIndex(i);
-            }
-            bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
-            drawTabParams(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
+        // 4. Parameter List (y=76..127 - 5 full rows)
+        uint8_t tabIndices[MAX_PARAMS];
+        for (uint8_t i = 0; i < tabParamCount; i++) {
+            tabIndices[i] = sys.getTabParamRealIndex(i);
         }
+        bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
+        drawParamList(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
     }
-    
-    drawStatusBar(midiCh, lastNote, gateActive, navStateInt);
 
     u8g2.sendBuffer();
 }
@@ -135,42 +138,48 @@ void Display::update(System& sys) {
     u8g2.clearBuffer();
 
     if (inst) {
-        drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch);
+        drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch, 0, 255, false);
+        drawVisualizerArea(inst, activeTab);
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
 
-        if (activeTab == TabId::TAB_MAIN) {
-            drawInstrumentUI(inst);
-        } else {
-            uint8_t tabIndices[MAX_PARAMS];
-            for (uint8_t i = 0; i < tabParamCount; i++) {
-                tabIndices[i] = sys.getTabParamRealIndex(i);
-            }
-            bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
-            drawTabParams(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
+        uint8_t tabIndices[MAX_PARAMS];
+        for (uint8_t i = 0; i < tabParamCount; i++) {
+            tabIndices[i] = sys.getTabParamRealIndex(i);
         }
+        bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
+        drawParamList(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
     }
-    
-    drawStatusBar(0, 255, false, navStateInt);
 
     u8g2.sendBuffer();
 }
 
-void Display::drawHeader(const char* instName, const char* patchName, int patchIndex) {
+void Display::drawHeader(const char* instName, const char* patchName, int patchIndex, uint8_t midiCh, uint8_t lastNote, bool gateActive) {
     u8g2.setFont(u8g2_font_7x14B_tr);
     u8g2.setDrawColor(1);
     
+    // Left: Engine Name
     if (instName) {
         u8g2.drawStr(0, 11, instName);
     }
     
+    // Middle: Compact MIDI channel & Gate activity dot
+    u8g2.setFont(u8g2_font_5x7_tr);
+    char midiBuf[8];
+    snprintf(midiBuf, sizeof(midiBuf), "C%d", (midiCh < 16 ? midiCh + 1 : 1));
+    u8g2.drawStr(44, 10, midiBuf);
+    if (gateActive) {
+        u8g2.drawDisc(58, 7, 2); // Animated MIDI activity dot
+    }
+
+    // Right: Patch Name
     char cleanPatch[24];
     cleanString(cleanPatch, patchName, sizeof(cleanPatch));
     
     u8g2.setFont(u8g2_font_6x10_tr);
     if (cleanPatch[0] != '\0') {
         int w = u8g2.getStrWidth(cleanPatch);
-        if (w > 80) {
-            cleanPatch[12] = '\0';
+        if (w > 62) {
+            cleanPatch[10] = '\0';
             w = u8g2.getStrWidth(cleanPatch);
         }
         u8g2.drawStr(SCREEN_WIDTH - w, 10, cleanPatch);
@@ -182,6 +191,136 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
     }
     
     u8g2.drawHLine(0, 12, SCREEN_WIDTH);
+}
+
+void Display::drawVisualizerArea(Instrument* inst, TabId activeTab) {
+    if (activeTab == TabId::TAB_MAIN || activeTab == TabId::TAB_SYNTH) {
+        if (inst) inst->drawUI(u8g2);
+    } else if (activeTab == TabId::TAB_ENV) {
+        if (inst) drawFilterEnvPlot(inst->params);
+    } else if (activeTab == TabId::TAB_FX) {
+        if (inst) drawFXPlot(inst->params);
+    }
+    u8g2.setDrawColor(1);
+    u8g2.drawHLine(0, 61, SCREEN_WIDTH);
+}
+
+void Display::drawFilterEnvPlot(const SynthParams& p) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+
+    // Left: VCF Bode Plot
+    const int F_X = 2;
+    const int F_Y = 15;
+    const int F_W = 58;
+    const int F_H = 43;
+    const int F_BASE = F_Y + F_H - 2;
+
+    u8g2.drawFrame(F_X, F_Y, F_W, F_H);
+    u8g2.drawStr(F_X + 3, F_Y + 7, "VCF");
+
+    float logCutoff = (log10f(p.cutoff) - 1.3f) / (4.0f - 1.3f);
+    logCutoff = constrain(logCutoff, 0.05f, 0.95f);
+    int cutoffPixel = F_X + 2 + (int)(logCutoff * (F_W - 6));
+
+    int peakHeight = (int)((p.resonance - 0.5f) / 4.5f * 14.0f);
+    int passbandY = F_BASE - 18;
+
+    u8g2.drawLine(F_X + 2, passbandY, cutoffPixel - 4, passbandY);
+    u8g2.drawLine(cutoffPixel - 4, passbandY, cutoffPixel, passbandY - peakHeight);
+    u8g2.drawLine(cutoffPixel, passbandY - peakHeight, F_X + F_W - 3, F_BASE);
+    u8g2.drawDisc(cutoffPixel, passbandY - peakHeight, 2);
+
+    // Right: ADSR Envelope Plot
+    const int E_X = 64;
+    const int E_Y = 15;
+    const int E_W = 62;
+    const int E_H = 43;
+    const int E_BASE = E_Y + E_H - 2;
+
+    u8g2.drawFrame(E_X, E_Y, E_W, E_H);
+    u8g2.drawStr(E_X + 3, E_Y + 7, "ENV");
+
+    float totalTime = p.attack_ms + p.decay_ms + p.release_ms + 400.0f;
+    int graphW = E_W - 8;
+    int aW = std::max(2, (int)((p.attack_ms / totalTime) * graphW));
+    int dW = std::max(2, (int)((p.decay_ms / totalTime) * graphW));
+    int sW = 12;
+    int rW = std::max(2, (int)((p.release_ms / totalTime) * graphW));
+
+    int x0 = E_X + 4;
+    int y0 = E_BASE;
+    int x1 = x0 + aW;
+    int y1 = E_Y + 8;
+    int x2 = x1 + dW;
+    int y2 = y1 + (int)((1.0f - (p.sustain_pct / 100.0f)) * (E_BASE - y1));
+    int x3 = x2 + sW;
+    int y3 = y2;
+    int x4 = std::min(x3 + rW, E_X + E_W - 4);
+    int y4 = E_BASE;
+
+    u8g2.drawLine(x0, y0, x1, y1);
+    u8g2.drawLine(x1, y1, x2, y2);
+    u8g2.drawLine(x2, y2, x3, y3);
+    u8g2.drawLine(x3, y3, x4, y4);
+
+    u8g2.drawDisc(x1, y1, 2);
+    u8g2.drawDisc(x2, y2, 2);
+    u8g2.drawDisc(x3, y3, 2);
+}
+
+void Display::drawFXPlot(const SynthParams& p) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+
+    // Left: Reverb Room Space
+    const int R_X = 2;
+    const int R_Y = 15;
+    const int R_W = 58;
+    const int R_H = 43;
+
+    u8g2.drawFrame(R_X, R_Y, R_W, R_H);
+    u8g2.drawStr(R_X + 3, R_Y + 7, "REVERB");
+
+    u8g2.drawFrame(R_X + 8, R_Y + 12, R_W - 16, R_H - 18);
+    u8g2.drawLine(R_X, R_Y, R_X + 8, R_Y + 12);
+    u8g2.drawLine(R_X + R_W, R_Y, R_X + R_W - 8, R_Y + 12);
+    u8g2.drawLine(R_X, R_Y + R_H, R_X + 8, R_Y + R_H - 6);
+    u8g2.drawLine(R_X + R_W, R_Y + R_H, R_X + R_W - 8, R_Y + R_H - 6);
+
+    int numParticles = (int)((p.reverb_pct / 100.0f) * 20.0f);
+    for (int i = 0; i < numParticles; i++) {
+        int px = R_X + 12 + ((i * 17) % (R_W - 24));
+        int py = R_Y + 16 + ((i * 23) % (R_H - 24));
+        u8g2.drawPixel(px, py);
+    }
+
+    // Right: Delay Pulse Train
+    const int D_X = 64;
+    const int D_Y = 15;
+    const int D_W = 62;
+    const int D_H = 43;
+    const int D_BASE = D_Y + D_H - 4;
+
+    u8g2.drawFrame(D_X, D_Y, D_W, D_H);
+    u8g2.drawStr(D_X + 3, D_Y + 7, "DELAY");
+    u8g2.drawHLine(D_X + 4, D_BASE, D_W - 8);
+
+    float mix = p.delay_mix_pct / 100.0f;
+    float fb  = p.delay_feedback / 100.0f;
+    int spacing = (int)((p.delay_time_ms / 1500.0f) * 16.0f) + 6;
+
+    float amp = 24.0f * (mix > 0.05f ? mix : 0.2f);
+    for (int i = 0; i < 4; i++) {
+        int tx = D_X + 6 + i * spacing;
+        if (tx >= D_X + D_W - 4) break;
+        int pulseH = (int)amp;
+        if (pulseH > 0) {
+            u8g2.drawVLine(tx, D_BASE - pulseH, pulseH);
+            u8g2.drawDisc(tx, D_BASE - pulseH, 1);
+        }
+        amp *= (0.3f + fb * 0.65f);
+    }
 }
 
 void Display::drawTabBar(TabId activeTab, bool tabFocus) {
@@ -199,12 +338,10 @@ void Display::drawTabBar(TabId activeTab, bool tabFocus) {
 
         if (isActive) {
             if (tabFocus) {
-                // Focused on Tab Bar: solid filled active tab
                 u8g2.setDrawColor(1);
                 u8g2.drawBox(x, y, tabW, tabH);
                 u8g2.setDrawColor(0);
             } else {
-                // In tab content: framed active tab with bottom indicator
                 u8g2.setDrawColor(1);
                 u8g2.drawFrame(x, y, tabW, tabH);
                 u8g2.drawBox(x + 2, y + tabH - 2, tabW - 4, 2);
@@ -212,7 +349,6 @@ void Display::drawTabBar(TabId activeTab, bool tabFocus) {
             }
         } else {
             u8g2.setDrawColor(1);
-            // Inactive tabs
         }
 
         int tw = u8g2.getStrWidth(tabLabels[i]);
@@ -223,23 +359,17 @@ void Display::drawTabBar(TabId activeTab, bool tabFocus) {
     u8g2.drawHLine(0, TAB_BAR_Y + TAB_BAR_H + 1, SCREEN_WIDTH);
 }
 
-void Display::drawInstrumentUI(Instrument* inst) {
-    if (inst) {
-        inst->drawUI(u8g2);
-    }
-}
-
-void Display::drawTabParams(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus) {
+void Display::drawParamList(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus) {
     if (count == 0) {
         u8g2.setFont(FONT_PARAM_NAME);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(12, CONTENT_Y + 25, "No Parameters");
+        u8g2.drawStr(12, PARAM_LIST_Y + 18, "No Parameters");
         return;
     }
 
     u8g2.setFont(FONT_PARAM_NAME);
     
-    uint8_t visibleRows = 6;
+    uint8_t visibleRows = 5; // 5 full rows fit in y=76..127!
     uint8_t startIdx = 0;
     
     if (selectedIdx >= visibleRows) {
@@ -251,7 +381,7 @@ void Display::drawTabParams(const ParamDescriptor* allParams, const uint8_t* tab
         if (tIdx >= count) break;
         
         uint8_t realIdx = tabIndices[tIdx];
-        int y = CONTENT_Y + (i * PARAM_ROW_H);
+        int y = PARAM_LIST_Y + (i * PARAM_ROW_H);
         bool isSelected = (tIdx == selectedIdx && hasFocus);
         
         if (isSelected) {
@@ -265,40 +395,18 @@ void Display::drawTabParams(const ParamDescriptor* allParams, const uint8_t* tab
         if (isSelected && editing) {
             char nameWithIndicator[32];
             snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", allParams[realIdx].name);
-            u8g2.drawStr(2, y + 10, nameWithIndicator);
+            u8g2.drawStr(2, y + 8, nameWithIndicator);
         } else {
-            u8g2.drawStr(2, y + 10, allParams[realIdx].name);
+            u8g2.drawStr(2, y + 8, allParams[realIdx].name);
         }
         
         char valBuf[32];
         allParams[realIdx].formatValue(valBuf, sizeof(valBuf));
         
         int w = u8g2.getStrWidth(valBuf);
-        u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 10, valBuf);
+        u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 8, valBuf);
     }
     u8g2.setDrawColor(1);
-}
-
-void Display::drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, uint8_t navState) {
-    u8g2.drawHLine(0, STATUS_BAR_Y - 2, SCREEN_WIDTH);
-    u8g2.setFont(FONT_STATUS);
-    u8g2.setDrawColor(1);
-    
-    const char* modeStr = "[TAB]";
-    if (navState == 2) modeStr = "[PATCH]";
-    else if (navState == 3) modeStr = "[PARAM]";
-    else if (navState == 4) modeStr = "[EDIT]";
-
-    char buf[36];
-    if (lastNote != 255) {
-        snprintf(buf, sizeof(buf), "%s CH:%d N:%d %c", 
-                 modeStr, (midiCh < 16 ? midiCh + 1 : 1), lastNote, gateActive ? '*' : ' ');
-    } else {
-        snprintf(buf, sizeof(buf), "%s CH:%d --", 
-                 modeStr, (midiCh < 16 ? midiCh + 1 : 1));
-    }
-             
-    u8g2.drawStr(0, STATUS_BAR_Y + 6, buf);
 }
 
 void Display::drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected) {

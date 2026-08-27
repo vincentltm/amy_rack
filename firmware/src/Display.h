@@ -16,11 +16,12 @@ public:
     void update(System& sys, MidiManager& midi);
     void update(System& sys);
 
-    void drawHeader(const char* instName, const char* patchName, int patchIndex = -1);
+    void drawHeader(const char* instName, const char* patchName, int patchIndex, uint8_t midiCh, uint8_t lastNote, bool gateActive);
+    void drawVisualizerArea(Instrument* inst, TabId activeTab);
+    void drawFilterEnvPlot(const SynthParams& p);
+    void drawFXPlot(const SynthParams& p);
     void drawTabBar(TabId activeTab, bool tabFocus);
-    void drawInstrumentUI(Instrument* inst);
-    void drawTabParams(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus);
-    void drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, uint8_t navState = 0);
+    void drawParamList(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus);
     void drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected);
     void showSplash();
 

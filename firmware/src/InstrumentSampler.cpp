@@ -215,28 +215,28 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
     if (isRecording) {
         u8g2.setFont(u8g2_font_7x14B_tr);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(10, 42, "[ RECORDING... ]");
+        u8g2.drawStr(10, 30, "[ RECORDING... ]");
 
         int progress = (sample_index * 112) / SAMPLER_MAX_SAMPLES;
-        u8g2.drawFrame(8, 50, 112, 12);
-        u8g2.drawBox(10, 52, progress, 8);
+        u8g2.drawFrame(8, 36, 112, 10);
+        u8g2.drawBox(10, 38, progress, 6);
 
         char buf[16];
         snprintf(buf, sizeof(buf), "%.1f / 5.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 74, buf);
+        u8g2.drawStr(10, 56, buf);
     } else if (original_length == 0) {
         u8g2.setFont(u8g2_font_6x10_tr);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(10, 48, "No Sample Loaded");
+        u8g2.drawStr(10, 32, "No Sample Loaded");
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 64, "Select 'Record' in SYNTH tab");
-        u8g2.drawFrame(8, 72, 112, 10);
+        u8g2.drawStr(10, 46, "Select 'Record' in SYNTH tab");
+        u8g2.drawFrame(8, 50, 112, 8);
     } else {
         const int WAVE_X = 4;
-        const int WAVE_Y = 36;
+        const int WAVE_Y = 16;
         const int WAVE_W = 120;
-        const int WAVE_H = 44;
+        const int WAVE_H = 34;
         const int WAVE_CENTER = WAVE_Y + WAVE_H / 2;
 
         u8g2.setDrawColor(1);
