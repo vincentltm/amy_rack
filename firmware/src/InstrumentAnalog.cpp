@@ -23,8 +23,9 @@ void InstrumentAnalog::init() {
     _analogParams[1] = PARAM_INT("Osc2 Wave", "", 0, 4,       &_osc2_wave_f,     TAB_SYNTH);
     _analogParams[2] = PARAM_PCT("Detune",    0.0f, 100.0f, 2.0f, &_osc2_detune_pct, TAB_SYNTH);
     _analogParams[3] = PARAM_PCT("Balance",   0.0f, 100.0f, 2.0f, &_osc_balance_pct, TAB_SYNTH);
+    _analogParams[4] = PARAM_PCT("Noise Lvl", 0.0f, 100.0f, 5.0f, &params.noise_pct,TAB_SYNTH);
 
-    _analogParamCount = 4;
+    _analogParamCount = 5;
 
     for (int i = 0; i < _baseParamCount; i++) {
         _analogParams[_analogParamCount + i] = _baseParams[i];
@@ -33,7 +34,7 @@ void InstrumentAnalog::init() {
 
 void InstrumentAnalog::start() {
     isActive = true;
-    setupSynthVoices();
+    loadPreset(_currentPatch);
 }
 
 void InstrumentAnalog::stop() {
@@ -42,6 +43,43 @@ void InstrumentAnalog::stop() {
     e.velocity = 0.0f;
     amy_add_event(&e);
     isActive = false;
+}
+
+void InstrumentAnalog::setPatch(int index) {
+    if (index < 0) index = 11;
+    if (index > 11) index = 0;
+    _currentPatch = index;
+    loadPreset(_currentPatch);
+}
+
+const char *InstrumentAnalog::getPatchName(int idx) const {
+    if (idx >= 0 && idx < 12) return analog_presets[idx].name;
+    return "";
+}
+
+void InstrumentAnalog::loadPreset(int idx) {
+    if (idx < 0 || idx >= 12) idx = 0;
+    const AnalogPreset& p = analog_presets[idx];
+
+    _osc1_wave_f = (float)p.osc1_wave;
+    _osc2_wave_f = (float)p.osc2_wave;
+    _osc2_detune_pct = p.osc2_detune_pct;
+    _osc_balance_pct = p.osc_balance_pct;
+    params.noise_pct = p.noise_pct;
+    params.cutoff = p.cutoff_hz;
+    params.resonance = p.resonance;
+    params.attack_ms = p.attack_ms;
+    params.decay_ms = p.decay_ms;
+    params.sustain_pct = p.sustain_pct;
+    params.release_ms = p.release_ms;
+    params.voice_mode = (float)p.voice_mode;
+    params.glide_ms = p.glide_ms;
+    params.chorus_pct = p.chorus_pct;
+    params.reverb_pct = p.reverb_pct;
+    params.delay_mix_pct = p.delay_mix_pct;
+
+    setupSynthVoices();
+    needsUIRedraw = true;
 }
 
 void InstrumentAnalog::drawWaveShape(U8G2 &u8g2, uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t waveType) {
@@ -135,12 +173,14 @@ void InstrumentAnalog::onParamChanged(uint8_t paramIndex) {
     else if (paramIndex == 1) updateOsc2Wave();
     else if (paramIndex == 2) updateOscDetune();
     else if (paramIndex == 3) updateOscBalance();
-    else if (paramIndex == 4 || paramIndex == 5) {
+    else if (paramIndex == 4) configNoise();
+    else if (paramIndex == 5 || paramIndex == 6) {
         sendFilter();
     }
-    else if (paramIndex >= 6 && paramIndex <= 9) sendAdsr();
-    else if (paramIndex == 10 || paramIndex == 11) configLfo();
-    else if (paramIndex >= 12) {
+    else if (paramIndex >= 7 && paramIndex <= 10) sendAdsr();
+    else if (paramIndex == 11 || paramIndex == 12) configLfo();
+    else if (paramIndex >= 13) {
+        configChorus();
         configReverb();
         configDelay();
     }
@@ -156,9 +196,10 @@ void InstrumentAnalog::setupSynthVoices() {
 
     e = amy_default_event();
     e.patch_number = 1024;
-    e.oscs_per_voice = 3;
+    e.oscs_per_voice = 4;
     e.synth = getSynthChannel();
-    e.num_voices = 6;
+    e.num_voices = (params.voice_mode > 0.5f) ? 1 : 6;
+    e.portamento_ms = (uint16_t)params.glide_ms;
     amy_add_event(&e);
 
     // Osc 1 - with ADSR via EG0
@@ -181,8 +222,19 @@ void InstrumentAnalog::setupSynthVoices() {
     e.amp_coefs[COEF_CONST] = 0.5f;
     e.amp_coefs[COEF_VEL] = 1.0f;
     e.amp_coefs[COEF_EG0] = 1.0f;
-    e.chained_osc = OSC_LFO_FILTER;
+    e.chained_osc = OSC_NOISE;
     e.mod_source = OSC_LFO_FILTER;
+    amy_add_event(&e);
+
+    // Noise - with ADSR via EG0
+    e = amy_default_event();
+    e.osc = OSC_NOISE;
+    e.synth = getSynthChannel();
+    e.wave = NOISE;
+    e.amp_coefs[COEF_CONST] = (params.noise_pct / 100.0f) * 0.5f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    e.amp_coefs[COEF_EG0] = 1.0f;
+    e.chained_osc = OSC_LFO_FILTER;
     amy_add_event(&e);
 
     // LFO Filter modulator
@@ -205,6 +257,7 @@ void InstrumentAnalog::setupSynthVoices() {
     updateOscBalance();
     sendAdsr();
     sendFilter();
+    configChorus();
     configReverb();
     configDelay();
 }
@@ -257,7 +310,6 @@ void InstrumentAnalog::updateOscDetune() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.osc = OSC_2;
-    // Map detune to pitch ratio
     float semitones = (_osc2_detune_pct / 100.0f) * 0.5f; // up to 50 cents detune
     e.freq_coefs[COEF_NOTE] = powf(2.0f, semitones / 12.0f);
     amy_add_event(&e);
@@ -279,6 +331,14 @@ void InstrumentAnalog::updateOscBalance() {
     e2.osc = OSC_2;
     e2.amp_coefs[COEF_CONST] = amp2;
     amy_add_event(&e2);
+}
+
+void InstrumentAnalog::configNoise() {
+    amy_event e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.osc = OSC_NOISE;
+    e.amp_coefs[COEF_CONST] = (params.noise_pct / 100.0f) * 0.5f;
+    amy_add_event(&e);
 }
 
 void InstrumentAnalog::configLfo() {

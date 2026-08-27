@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// Instrument.h — Base instrument class for AMY Rack with Chorus, Reverb, Delay
+// Instrument.h — Base instrument class with Voice Modes & FX
 // =============================================================================
 
 #include <Arduino.h>
@@ -13,6 +13,8 @@ extern "C" {
 }
 
 struct SynthParams {
+    float voice_mode     = 0.0f;    // 0 = Poly (6-voice), 1 = Mono Legato (1-voice)
+    float glide_ms       = 0.0f;    // 0 - 500 ms portamento glide
     float cutoff         = 2000.0f; // 20 - 10000 Hz
     float resonance      = 1.0f;    // 0.5 - 5.0
     float attack_ms      = 20.0f;   // 1 - 5000 ms
@@ -91,6 +93,16 @@ public:
     virtual void nextPatch()     { setPatch(getCurrentPatch() + 1); }
     virtual void prevPatch()     { setPatch(getCurrentPatch() - 1); }
 
+    virtual uint8_t getDefaultVoiceCount() const { return 6; }
+
+    virtual void applyVoiceMode() {
+        amy_event e = amy_default_event();
+        e.synth = getSynthChannel();
+        e.num_voices = (params.voice_mode > 0.5f) ? 1 : getDefaultVoiceCount();
+        e.portamento_ms = (uint16_t)params.glide_ms;
+        amy_add_event(&e);
+    }
+
     virtual void configChorus() {
         if (params.chorus_pct > 0.0f) {
             float lvl = params.chorus_pct / 100.0f;
@@ -122,6 +134,7 @@ protected:
     virtual uint8_t getSynthChannel() { return SYNTH_CHANNEL_DEFAULT; }
 
     virtual void sendAllParams() {
+        applyVoiceMode();
         sendAdsr();
         sendFilter();
         configChorus();

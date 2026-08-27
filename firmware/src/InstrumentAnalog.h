@@ -1,5 +1,6 @@
 #pragma once
 #include "Instrument.h"
+#include "analog_patches.h"
 
 class InstrumentAnalog : public Instrument {
 public:
@@ -14,10 +15,17 @@ public:
     const ParamDescriptor *getParams() const override { return _analogParams; }
     uint8_t getParamCount() const override { return _analogParamCount; }
 
+    int getPatchCount() const override { return 12; }
+    int getCurrentPatch() const override { return _currentPatch; }
+    void setPatch(int index) override;
+    const char *getPatchName(int idx) const override;
+
 private:
-    float _osc1_wave_f = 0.0f; // 0=Sine, 1=Pulse, 2=Saw, 3=Tri, 4=Noise
-    float _osc2_wave_f = 2.0f; // Default Osc 2 = Saw
-    float _osc2_detune_pct = 50.0f; // 0-100%
+    int _currentPatch = 0;
+
+    float _osc1_wave_f = 2.0f; // Default Saw
+    float _osc2_wave_f = 2.0f; // Default Saw
+    float _osc2_detune_pct = 25.0f; // 0-100%
     float _osc_balance_pct = 50.0f; // 0-100%
 
     ParamDescriptor _analogParams[MAX_PARAMS];
@@ -30,6 +38,7 @@ private:
     static constexpr uint8_t OSC_LFO_PITCH = 4;
 
     void setupSynthVoices();
+    void loadPreset(int idx);
     void updateOsc1Wave();
     void updateOsc2Wave();
     void updateOscDetune();

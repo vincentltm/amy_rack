@@ -26,7 +26,8 @@ static const char* tabLabels[TAB_COUNT] = {
     "MAIN",
     "SYNTH",
     "ENV",
-    "FX"
+    "FX",
+    "MIDI"
 };
 
 Display::Display() : u8g2(U8G2_R0, U8X8_PIN_NONE, I2C_SCL_PIN, I2C_SDA_PIN) {
@@ -166,9 +167,9 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
 }
 
 void Display::drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t lastNote, bool gateActive) {
-    if (activeTab == TabId::TAB_MAIN) {
+    if (activeTab == TabId::TAB_MIDI) {
         drawMasterKeyboard(lastNote, gateActive);
-    } else if (activeTab == TabId::TAB_SYNTH) {
+    } else if (activeTab == TabId::TAB_MAIN || activeTab == TabId::TAB_SYNTH) {
         if (inst) inst->drawUI(u8g2);
     } else if (activeTab == TabId::TAB_ENV) {
         if (inst) drawFilterEnvPlot(inst->params);
@@ -416,10 +417,10 @@ void Display::drawFXPlot(const SynthParams& p) {
 }
 
 void Display::drawTabBar(TabId activeTab, bool tabFocus) {
-    const uint8_t tabW = 28;
+    const uint8_t tabW = 22;
     const uint8_t tabH = 10;
     const uint8_t gap = 2;
-    const uint8_t startX = (SCREEN_WIDTH - (tabW * TAB_COUNT + gap * (TAB_COUNT - 1))) / 2; // 5px
+    const uint8_t startX = (SCREEN_WIDTH - (tabW * TAB_COUNT + gap * (TAB_COUNT - 1))) / 2; // (128 - (110 + 8)) / 2 = 5px
     const uint8_t y = TAB_BAR_Y;
 
     u8g2.setFont(FONT_TAB);

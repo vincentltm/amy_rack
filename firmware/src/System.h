@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// System.h — Tabbed Architecture with Master Overview on MAIN Tab
+// System.h — Tabbed Architecture with Master Overview on MAIN and MIDI Tab
 // =============================================================================
 
 #include <Arduino.h>
@@ -13,7 +13,7 @@ class CVManager;
 class MidiManager;
 
 enum class NavState : uint8_t {
-    TAB_SELECT   = 0, // Turning switches MAIN | SYNTH | ENV | FX
+    TAB_SELECT   = 0, // Turning switches MAIN | SYNTH | ENV | FX | MIDI
     PARAM_SELECT = 1, // Turning scrolls settings in active tab
     PARAM_EDIT   = 2  // Turning edits highlighted setting
 };
@@ -53,14 +53,15 @@ private:
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
-    // Master params for TAB_MAIN
-    float _param_engine  = (float)DEFAULT_INSTRUMENT;
-    float _param_patch   = 0.0f;
-    float _param_midi_ch = 0.0f; // 0 = Ch 1, 15 = Ch 16, 16 = Omni
-    float _param_cv1     = 0.0f; // 0 = V/Oct, 1 = Cutoff, 2 = Vol, 3 = Off
-    float _param_cv2     = 0.0f; // 0 = Gate, 1 = ModWhl, 2 = Res, 3 = Off
+    // Master System params
+    float _param_engine   = (float)DEFAULT_INSTRUMENT;
+    float _param_patch    = 0.0f;
+    float _param_volume   = 85.0f; // 0 - 100%
+    float _param_midi_ch  = 0.0f;  // 0 = Ch 1, 15 = Ch 16, 16 = Omni
+    float _param_cv1      = 0.0f;  // 0 = V/Oct, 1 = Cutoff, 2 = Vol, 3 = Off
+    float _param_cv2      = 0.0f;  // 0 = Gate, 1 = ModWhl, 2 = Res, 3 = Off
 
-    ParamDescriptor _masterParams[6];
+    ParamDescriptor _masterParams[8];
     uint8_t _masterParamCount = 0;
     void initMasterParams();
 

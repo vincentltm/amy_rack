@@ -11,13 +11,17 @@
 #include "InstrumentSampler.h"
 #include "InstrumentPiano.h"
 
-// String arrays for enums
 static const char* engineNames[NUM_INSTRUMENTS] = {
     "DX7",
     "JUNO-106",
     "ANALOG",
     "SAMPLER",
     "PIANO"
+};
+
+static const char* voiceModeNames[2] = {
+    "Poly 6V",
+    "Mono Leg"
 };
 
 static const char* midiChannelNames[17] = {
@@ -62,12 +66,21 @@ void System::initInstruments() {
 }
 
 void System::initMasterParams() {
-    _masterParams[0] = PARAM_ENUM("Engine",  NUM_INSTRUMENTS - 1, &_param_engine,  engineNames,      TAB_MAIN);
-    _masterParams[1] = PARAM_INT("Patch",   "", 0, 127,           &_param_patch,   TAB_MAIN);
-    _masterParams[2] = PARAM_ENUM("MIDI Ch", 16,                  &_param_midi_ch, midiChannelNames, TAB_MAIN);
-    _masterParams[3] = PARAM_ENUM("CV1 In",  3,                   &_param_cv1,     cv1Names,         TAB_MAIN);
-    _masterParams[4] = PARAM_ENUM("CV2 In",  3,                   &_param_cv2,     cv2Names,         TAB_MAIN);
-    _masterParamCount = 5;
+    Instrument *inst = getActiveInstrument();
+
+    // TAB_MAIN
+    _masterParams[0] = PARAM_ENUM("Engine",     NUM_INSTRUMENTS - 1, &_param_engine,  engineNames,      TAB_MAIN);
+    _masterParams[1] = PARAM_INT("Patch",       "", 0, 127,           &_param_patch,                    TAB_MAIN);
+    _masterParams[2] = PARAM_ENUM("Voice Mode", 1,                   inst ? &(inst->params.voice_mode) : nullptr, voiceModeNames, TAB_MAIN);
+    _masterParams[3] = PARAM_MS("Glide Time",   0.0f, 500.0f, 10.0f,  inst ? &(inst->params.glide_ms) : nullptr, TAB_MAIN);
+    _masterParams[4] = PARAM_PCT("Volume",      0.0f, 100.0f, 5.0f,   &_param_volume,                   TAB_MAIN);
+
+    // TAB_MIDI
+    _masterParams[5] = PARAM_ENUM("MIDI Ch",    16,                  &_param_midi_ch, midiChannelNames, TAB_MIDI);
+    _masterParams[6] = PARAM_ENUM("CV1 In",     3,                   &_param_cv1,     cv1Names,         TAB_MIDI);
+    _masterParams[7] = PARAM_ENUM("CV2 In",     3,                   &_param_cv2,     cv2Names,         TAB_MIDI);
+
+    _masterParamCount = 8;
 }
 
 void System::update() {
@@ -85,13 +98,20 @@ void System::updateTabParams() {
     Instrument *inst = getActiveInstrument();
     _tabParamCount = 0;
 
-    if (_activeTab == TabId::TAB_MAIN) {
+    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
         if (inst) {
             _masterParams[1].maxVal = (float)std::max(0, inst->getPatchCount() - 1);
             _param_patch = (float)inst->getCurrentPatch();
+            _masterParams[2].valuePtr = &(inst->params.voice_mode);
+            _masterParams[3].valuePtr = &(inst->params.glide_ms);
         }
         _param_engine = (float)_currentInstrument;
-        _tabParamCount = _masterParamCount;
+
+        for (uint8_t i = 0; i < _masterParamCount; i++) {
+            if (_masterParams[i].tab == _activeTab) {
+                _tabIndices[_tabParamCount++] = i;
+            }
+        }
         return;
     }
 
@@ -108,156 +128,129 @@ void System::updateTabParams() {
 }
 
 const ParamDescriptor* System::getTabParamDescriptor(uint8_t idx) const {
-    if (_activeTab == TabId::TAB_MAIN) {
-        if (idx < _masterParamCount) return &_masterParams[idx];
+    if (idx >= _tabParamCount) return nullptr;
+    uint8_t realIdx = _tabIndices[idx];
+
+    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
+        if (realIdx < _masterParamCount) return &_masterParams[realIdx];
         return nullptr;
     }
     Instrument *inst = getActiveInstrument();
-    if (inst && idx < _tabParamCount) {
-        uint8_t realIdx = _tabIndices[idx];
+    if (inst) {
         return &(inst->getParams()[realIdx]);
     }
     return nullptr;
 }
 
 uint8_t System::getTabParamRealIndex(uint8_t idx) const {
-    if (_activeTab == TabId::TAB_MAIN) return idx;
     if (idx < _tabParamCount) return _tabIndices[idx];
     return 0;
 }
 
 // -----------------------------------------------------------------------------
-// Level 0: TAB_SELECT (Horizontal Tab Bar: MAIN | SYNTH | ENV | FX)
+// Level 0: TAB_SELECT (Horizontal Tab Bar: MAIN | SYNTH | ENV | FX | MIDI)
 // -----------------------------------------------------------------------------
 void System::handleTabSelect() {
-    // Click -> Dive into active tab parameter list
+    int delta = _encoder->getDelta();
+    if (delta != 0) {
+        int nextTab = (int)_activeTab + delta;
+        if (nextTab < 0) nextTab = 0;
+        if (nextTab >= TAB_COUNT) nextTab = TAB_COUNT - 1;
+        
+        if ((TabId)nextTab != _activeTab) {
+            _activeTab = (TabId)nextTab;
+            _selectedParam = 0;
+            updateTabParams();
+            if (getActiveInstrument()) getActiveInstrument()->needsUIRedraw = true;
+        }
+    }
+
     if (_encoder->wasPressed()) {
-        updateTabParams();
-        _selectedParam = 0;
-        _paramScrollTop = 0;
         if (_tabParamCount > 0) {
+            _selectedParam = 0;
             enterState(NavState::PARAM_SELECT);
         }
-        return;
-    }
-
-    // Long press on Tab Bar -> Loop back or jump to MAIN tab
-    if (_encoder->wasLongPressed()) {
-        _activeTab = TabId::TAB_MAIN;
-        updateTabParams();
-        _selectedParam = 0;
-        enterState(NavState::PARAM_SELECT);
-        return;
-    }
-
-    // Turn -> Switch Tab horizontally
-    int delta = _encoder->getDelta();
-    if (delta != 0) {
-        int newTab = (int)_activeTab + delta;
-        newTab = constrain(newTab, 0, (int)TabId::TAB_COUNT - 1);
-        _activeTab = (TabId)newTab;
-        updateTabParams();
-        _selectedParam = 0;
-        Instrument *inst = getActiveInstrument();
-        if (inst) inst->needsUIRedraw = true;
     }
 }
 
 // -----------------------------------------------------------------------------
-// Level 1: PARAM_SELECT (Scroll parameters inside active tab)
+// Level 1: PARAM_SELECT (Scroll vertical parameter list)
 // -----------------------------------------------------------------------------
 void System::handleParamSelect() {
-    if (_tabParamCount == 0) {
-        enterState(NavState::TAB_SELECT);
-        return;
+    int delta = _encoder->getDelta();
+    if (delta != 0 && _tabParamCount > 0) {
+        int next = (int)_selectedParam + delta;
+        if (next < 0) next = 0;
+        if (next >= _tabParamCount) next = _tabParamCount - 1;
+        _selectedParam = (uint8_t)next;
     }
 
-    // Long press -> Go back UP to Tab Bar
+    if (_encoder->wasPressed()) {
+        if (_tabParamCount > 0) {
+            enterState(NavState::PARAM_EDIT);
+        }
+    }
+
     if (_encoder->wasLongPressed()) {
         enterState(NavState::TAB_SELECT);
-        return;
-    }
-
-    // Click -> Enter PARAM_EDIT mode for highlighted setting
-    if (_encoder->wasPressed()) {
-        enterState(NavState::PARAM_EDIT);
-        return;
-    }
-
-    // Turn -> Scroll parameters in this tab
-    int delta = _encoder->getDelta();
-    if (delta != 0) {
-        int newSel = (int)_selectedParam + delta;
-        newSel = constrain(newSel, 0, (int)_tabParamCount - 1);
-        _selectedParam = (uint8_t)newSel;
-
-        uint8_t visibleRows = 5;
-        if (_selectedParam < _paramScrollTop) {
-            _paramScrollTop = _selectedParam;
-        } else if (_selectedParam >= _paramScrollTop + visibleRows) {
-            _paramScrollTop = _selectedParam - visibleRows + 1;
-        }
     }
 }
 
 // -----------------------------------------------------------------------------
-// Level 2: PARAM_EDIT (Adjust setting value in real-time)
+// Level 2: PARAM_EDIT (Turn encoder to live adjust value)
 // -----------------------------------------------------------------------------
 void System::handleParamEdit() {
-    if (_selectedParam >= _tabParamCount) {
-        enterState(NavState::PARAM_SELECT);
-        return;
-    }
-
-    // Click or Long press -> Confirm & return to PARAM_SELECT
-    if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
-        enterState(NavState::PARAM_SELECT);
-        return;
-    }
-
-    // Turn -> Adjust parameter value
     int delta = _encoder->getDelta();
     if (delta != 0) {
-        bool accel = (abs(delta) >= ENCODER_ACCEL_THRESHOLD);
-
-        if (_activeTab == TabId::TAB_MAIN) {
-            _masterParams[_selectedParam].adjust(delta, accel);
-            onMasterParamChanged(_selectedParam);
+        if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
+            uint8_t realIdx = _tabIndices[_selectedParam];
+            if (realIdx < _masterParamCount) {
+                _masterParams[realIdx].adjust(delta, false);
+                onMasterParamChanged(realIdx);
+            }
         } else {
             Instrument *inst = getActiveInstrument();
             if (inst) {
                 uint8_t realIdx = _tabIndices[_selectedParam];
-                inst->getParams()[realIdx].adjust(delta, accel);
-                inst->onParamChanged(realIdx);
-                inst->needsUIRedraw = true;
+                const ParamDescriptor *desc = &(inst->getParams()[realIdx]);
+                if (desc) {
+                    desc->adjust(delta, false);
+                    inst->onParamChanged(realIdx);
+                }
             }
         }
+    }
+
+    if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
+        enterState(NavState::PARAM_SELECT);
     }
 }
 
 void System::onMasterParamChanged(uint8_t idx) {
-    if (idx == 0) { // Engine switch
-        uint8_t newEng = (uint8_t)_param_engine;
-        if (newEng != _currentInstrument) {
-            switchInstrument(newEng);
+    if (idx == 0) { // Engine
+        uint8_t newInst = (uint8_t)roundf(_param_engine);
+        if (newInst < NUM_INSTRUMENTS && newInst != _currentInstrument) {
+            switchInstrument(newInst);
         }
-    } else if (idx == 1) { // Patch switch
+    } else if (idx == 1) { // Patch
         Instrument *inst = getActiveInstrument();
-        if (inst && inst->getPatchCount() > 0) {
-            inst->setPatch((int)_param_patch);
-            inst->needsUIRedraw = true;
+        if (inst) {
+            inst->setPatch((int)roundf(_param_patch));
         }
-    } else if (idx == 2) { // MIDI channel
+    } else if (idx == 2 || idx == 3) { // Voice Mode or Glide Time
+        Instrument *inst = getActiveInstrument();
+        if (inst) {
+            inst->applyVoiceMode();
+        }
+    } else if (idx == 4) { // Volume
+        amy_event e = amy_default_event();
+        e.volume = _param_volume / 100.0f;
+        amy_add_event(&e);
+    } else if (idx == 5) { // MIDI Ch
         if (_midi) {
-            _midi->setChannel((uint8_t)_param_midi_ch);
+            _midi->setChannel((uint8_t)roundf(_param_midi_ch));
         }
     }
-}
-
-void System::enterState(NavState newState) {
-    _navState = newState;
-    Instrument *inst = getActiveInstrument();
-    if (inst) inst->needsUIRedraw = true;
 }
 
 void System::switchInstrument(uint8_t index) {
@@ -267,27 +260,35 @@ void System::switchInstrument(uint8_t index) {
         _instruments[_currentInstrument]->stop();
     }
 
-    // Reset AMY synth channels completely so no leftover voice chaining interferes
+    _currentInstrument = index;
+    _param_engine = (float)index;
+
+    // Reset AMY oscillators to prevent voice fragmentation
     amy_event e = amy_default_event();
     e.reset_osc = RESET_ALL_OSCS;
     amy_add_event(&e);
 
-    _currentInstrument = index;
-    _param_engine = (float)_currentInstrument;
-
     if (_instruments[_currentInstrument]) {
         _instruments[_currentInstrument]->start();
-        _instruments[_currentInstrument]->needsUIRedraw = true;
     }
 
-    _selectedParam = 0;
-    _paramScrollTop = 0;
     updateTabParams();
+    _selectedParam = 0;
+    if (_instruments[_currentInstrument]) {
+        _instruments[_currentInstrument]->needsUIRedraw = true;
+    }
 }
 
 const char* System::getInstrumentName(uint8_t i) const {
     if (i < NUM_INSTRUMENTS && _instruments[i]) {
-        return _instruments[i]->getShortName();
+        return _instruments[i]->getName();
     }
-    return "---";
+    return "";
+}
+
+void System::enterState(NavState newState) {
+    _navState = newState;
+    if (_instruments[_currentInstrument]) {
+        _instruments[_currentInstrument]->needsUIRedraw = true;
+    }
 }

@@ -1,16 +1,17 @@
 #pragma once
 // =============================================================================
-// ParamDefs.h — Tabbed Parameter Descriptors with Enum support
+// ParamDefs.h — Tabbed Parameter Descriptors with 5 Modular Tabs
 // =============================================================================
 
 #include <Arduino.h>
 
 enum TabId : uint8_t {
-    TAB_MAIN  = 0, // Master / Engine / Patch / MIDI / CV Dashboard
+    TAB_MAIN  = 0, // Engine, Patch, Voice Mode, Glide, Volume
     TAB_SYNTH = 1, // Engine specific controls (DCO, Waves, Trim, Gain)
     TAB_ENV   = 2, // Filter & Envelope (Cutoff, Res, ADSR, LFO)
-    TAB_FX    = 3, // Effects (Reverb, Delay)
-    TAB_COUNT = 4
+    TAB_FX    = 3, // Effects (Chorus, Reverb, Delay)
+    TAB_MIDI  = 4, // MIDI Channel, CV I/O Routing & Keyboard Monitor
+    TAB_COUNT = 5
 };
 
 struct ParamDescriptor {
@@ -18,7 +19,7 @@ struct ParamDescriptor {
     const char *unit;       // Unit string, e.g. "Hz", "ms", "%", "x", ""
     float minVal;           // Minimum allowed value
     float maxVal;           // Maximum allowed value
-    float step;             // Encoder increment per click (fine)
+    float step;             // Encoder increment per click (linear fine)
     float coarseStep;       // Encoder increment when accelerating
     float *valuePtr;        // Pointer to the live value
     bool isInteger;         // If true, display and snap to integers
