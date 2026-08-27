@@ -186,12 +186,12 @@ void Display::drawMasterKeyboard(uint8_t lastNote, bool gateActive) {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.setDrawColor(1);
 
-    if (lastNote != 255 && gateActive) {
+    if (lastNote != 255) {
         int noteIdx = lastNote % 12;
         int oct = (lastNote / 12) - 1;
         float freq = 440.0f * powf(2.0f, ((float)lastNote - 69.0f) / 12.0f);
         char buf[32];
-        snprintf(buf, sizeof(buf), "NOTE: %s%d  (%.1f Hz)", noteNames[noteIdx], oct, freq);
+        snprintf(buf, sizeof(buf), "NOTE: %s%d (%.1fHz)%s", noteNames[noteIdx], oct, freq, gateActive ? " *" : "");
         u8g2.drawStr(8, 23, buf);
     } else {
         u8g2.drawStr(8, 23, "KEYBOARD & MIDI MONITOR");
@@ -205,20 +205,21 @@ void Display::drawMasterKeyboard(uint8_t lastNote, bool gateActive) {
     const int blackKeyH = 19;
     const int blackKeyW = 5;
 
-    // Determine if an active key is within display range (C3..B4)
+    // Determine active key in 2-octave range
     int activeWhiteKey = -1;
     int activeBlackKey = -1;
 
-    if (gateActive && lastNote >= 48 && lastNote <= 72) {
-        int noteIn2Oct = lastNote - 48; // 0..24
-        // Mapping semitones to white/black keys
-        static const int whiteMap[25] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6, 7, -1, 8, -1, 9, 10, -1, 11, -1, 12, -1, 13, 14};
-        static const int blackMap[25] = {-1, 0, -1, 1, -1, -1, 2, -1, 3, -1, 4, -1, -1, 5, -1, 6, -1, -1, 7, -1, 8, -1, 9, -1, -1};
+    if (gateActive && lastNote != 255) {
+        int noteInOct = lastNote % 12;
+        int octave = (lastNote / 12);
+        int octOffset = (octave % 2) * 7;
+        int blackOctOffset = (octave % 2) * 5;
 
-        if (noteIn2Oct < 25) {
-            activeWhiteKey = whiteMap[noteIn2Oct];
-            activeBlackKey = blackMap[noteIn2Oct];
-        }
+        static const int whiteMap[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
+        static const int blackMap[12] = {-1, 0, -1, 1, -1, -1, 2, -1, 3, -1, 4, -1};
+
+        if (whiteMap[noteInOct] >= 0) activeWhiteKey = whiteMap[noteInOct] + octOffset;
+        if (blackMap[noteInOct] >= 0) activeBlackKey = blackMap[noteInOct] + blackOctOffset;
     }
 
     for (int i = 0; i < 14; i++) {

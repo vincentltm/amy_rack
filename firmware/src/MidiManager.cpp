@@ -1,6 +1,10 @@
 #include "MidiManager.h"
 #include <Arduino.h>
 
+extern "C" {
+    void juno_filter_midi_handler(uint8_t *bytes, uint16_t len, uint8_t is_sysex);
+}
+
 MidiManager* MidiManager::instance = nullptr;
 
 MidiManager::MidiManager(CVManager* cvManager) : cvManager(cvManager) {
@@ -9,11 +13,13 @@ MidiManager::MidiManager(CVManager* cvManager) : cvManager(cvManager) {
 
 void MidiManager::begin() {
     instance = this;
+    amy_global.config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
 }
 
 void MidiManager::begin(CVManager& cv) {
     this->cvManager = &cv;
     instance = this;
+    amy_global.config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
 }
 
 void MidiManager::update() {
@@ -66,4 +72,7 @@ void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex)
             }
         }
     }
+
+    // Forward to AMY internal handler for MIDI CC / pitch bend
+    juno_filter_midi_handler(bytes, len, is_sysex);
 }
