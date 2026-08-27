@@ -527,7 +527,17 @@ void Display::drawParamList(System& sys, uint8_t count, uint8_t selectedIdx, boo
         }
         
         char valBuf[32];
-        param->formatValue(valBuf, sizeof(valBuf));
+        if (strcmp(param->name, "Patch") == 0 && sys.getActiveInstrument()) {
+            int pIdx = (int)roundf(*param->valuePtr);
+            const char* pName = sys.getActiveInstrument()->getPatchName(pIdx);
+            if (pName && pName[0] != '\0') {
+                snprintf(valBuf, sizeof(valBuf), "%02d:%s", pIdx, pName);
+            } else {
+                snprintf(valBuf, sizeof(valBuf), "P:%03d", pIdx);
+            }
+        } else {
+            param->formatValue(valBuf, sizeof(valBuf));
+        }
         
         int w = u8g2.getStrWidth(valBuf);
         u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 8, valBuf);

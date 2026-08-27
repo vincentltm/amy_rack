@@ -54,12 +54,14 @@ private:
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
-    // Master & Drum System params
+    // Master & Drum System params (strictly allocated floats)
     float _param_engine        = (float)DEFAULT_INSTRUMENT;
     float _param_patch         = 0.0f;
     float _param_synth_vol     = 85.0f; // 0 - 100%
-    float _param_drum_kit      = 0.0f;  // 0=808 Classic, 1=Electro, 2=Percussion, 3=Sub Boom
+    float _param_drum_kit      = 0.0f;  // 0..8
     float _param_drum_vol      = 85.0f; // 0 - 100%
+    float _param_voice_mode    = 0.0f;  // 0 = Poly, 1 = Mono Legato
+    float _param_glide         = 0.0f;  // 0 - 500 ms
     float _param_kick_tune     = 0.0f;  // -12 to +12 semitones
     float _param_snare_tune    = 0.0f;  // -12 to +12 semitones
     float _param_tom_tune      = 0.0f;  // -12 to +12 semitones

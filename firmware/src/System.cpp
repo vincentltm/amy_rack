@@ -49,9 +49,6 @@ static const char* cv2Names[4] = {
     "Gate", "ModWhl", "Reson", "Off"
 };
 
-static float dummyVoiceMode = 0.0f;
-static float dummyGlide = 0.0f;
-
 System Sys;
 
 void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager &midi) {
@@ -89,8 +86,8 @@ void System::initMasterParams() {
     _masterParams[2] = PARAM_ENUM("Drums", 9, &_param_drum_kit, drumKitNames, TAB_MAIN);
     _masterParams[3] = PARAM_PCT("Synth Vol", 0.0f, 100.0f, 1.0f, &_param_synth_vol, TAB_MAIN);
     _masterParams[4] = PARAM_PCT("Drum Vol", 0.0f, 100.0f, 1.0f, &_param_drum_vol, TAB_MAIN);
-    _masterParams[5] = PARAM_ENUM("Voice Mode", 2, &dummyVoiceMode, voiceModeNames, TAB_MAIN);
-    _masterParams[6] = PARAM_FLOAT("Glide", "ms", 0.0f, 500.0f, 5.0f, &dummyGlide, TAB_MAIN);
+    _masterParams[5] = PARAM_ENUM("Voice Mode", 2, &_param_voice_mode, voiceModeNames, TAB_MAIN);
+    _masterParams[6] = PARAM_FLOAT("Glide", "ms", 0.0f, 500.0f, 5.0f, &_param_glide, TAB_MAIN);
 
     // --- TAB_DRUM ---
     _masterParams[7]  = PARAM_ENUM("Drums", 9, &_param_drum_kit, drumKitNames, TAB_DRUM);
@@ -124,15 +121,15 @@ void System::updateTabParams() {
     Instrument *inst = getActiveInstrument();
     _tabParamCount = 0;
 
-    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_DRUM || _activeTab == TabId::TAB_MIDI) {
-        if (inst) {
-            _masterParams[1].maxVal = (float)std::max(0, inst->getPatchCount() - 1);
-            _param_patch = (float)inst->getCurrentPatch();
-            _masterParams[5].valuePtr = &(inst->params.voice_mode);
-            _masterParams[6].valuePtr = &(inst->params.glide_ms);
-        }
-        _param_engine = (float)_currentInstrument;
+    if (inst) {
+        _masterParams[1].maxVal = (float)std::max(0, inst->getPatchCount() - 1);
+        _param_patch = (float)inst->getCurrentPatch();
+        _param_voice_mode = inst->params.voice_mode;
+        _param_glide = inst->params.glide_ms;
+    }
+    _param_engine = (float)_currentInstrument;
 
+    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_DRUM || _activeTab == TabId::TAB_MIDI) {
         for (uint8_t i = 0; i < _masterParamCount; i++) {
             if (_masterParams[i].tab == _activeTab) {
                 _tabIndices[_tabParamCount++] = i;
@@ -280,9 +277,16 @@ void System::onMasterParamChanged(uint8_t idx) {
         e.synth = 10;
         e.volume = _param_drum_vol / 100.0f;
         amy_add_event(&e);
-    } else if (idx == 5 || idx == 6) { // Voice Mode or Glide Time
+    } else if (idx == 5) { // Voice Mode
         Instrument *inst = getActiveInstrument();
         if (inst) {
+            inst->params.voice_mode = _param_voice_mode;
+            inst->applyVoiceMode();
+        }
+    } else if (idx == 6) { // Glide Time
+        Instrument *inst = getActiveInstrument();
+        if (inst) {
+            inst->params.glide_ms = _param_glide;
             inst->applyVoiceMode();
         }
     } else if (idx >= 9 && idx <= 12) { // Drum Tuning & Drive
