@@ -263,10 +263,8 @@ void System::switchInstrument(uint8_t index) {
     _currentInstrument = index;
     _param_engine = (float)index;
 
-    // Reset AMY oscillators to prevent voice fragmentation
-    amy_event e = amy_default_event();
-    e.reset_osc = RESET_ALL_OSCS;
-    amy_add_event(&e);
+    // Reset AMY oscillators synchronously to guarantee a clean slate
+    amy_reset_oscs();
 
     if (_instruments[_currentInstrument]) {
         _instruments[_currentInstrument]->start();

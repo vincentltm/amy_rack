@@ -62,11 +62,9 @@ void InstrumentSampler::stop() {
     }
 
     amy_event e = amy_default_event();
+    e.synth = getSynthChannel();
     e.velocity = 0.0f;
-    for (int i = 0; i < SAMPLER_VOICES; i++) {
-        e.osc = _voiceOscs[i];
-        amy_add_event(&e);
-    }
+    amy_add_event(&e);
 
     isActive = false;
 }
@@ -95,20 +93,8 @@ void InstrumentSampler::noteOn(uint8_t note, float velocity) {
     if (!isActive || isRecording) return;
     if (_currentPatch == 11 && sample_length == 0) return;
 
-    uint16_t presetNum = 1;
-    if (_currentPatch == 11) {
-        presetNum = 11;
-    } else if (_currentPatch >= 0 && _currentPatch < 11) {
-        presetNum = romPresetMap[_currentPatch];
-    }
-
-    uint8_t voiceOsc = _voiceOscs[_currentVoice];
-    _currentVoice = (_currentVoice + 1) % SAMPLER_VOICES;
-
     amy_event e = amy_default_event();
-    e.osc = voiceOsc;
-    e.wave = PCM;
-    e.preset = presetNum;
+    e.synth = getSynthChannel();
     e.midi_note = note;
     e.velocity = velocity * _param_gain;
     amy_add_event(&e);
@@ -116,6 +102,12 @@ void InstrumentSampler::noteOn(uint8_t note, float velocity) {
 
 void InstrumentSampler::noteOff(uint8_t note) {
     if (!isActive || isRecording) return;
+
+    amy_event e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.midi_note = note;
+    e.velocity = 0.0f;
+    amy_add_event(&e);
 }
 
 void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
@@ -246,14 +238,28 @@ void InstrumentSampler::setupSynthVoices() {
         presetNum = romPresetMap[_currentPatch];
     }
 
-    for (int i = 0; i < SAMPLER_VOICES; i++) {
-        amy_event e = amy_default_event();
-        e.osc = _voiceOscs[i];
-        e.wave = PCM;
-        e.preset = presetNum;
-        e.velocity = 0.0f;
-        amy_add_event(&e);
-    }
+    amy_event e = amy_default_event();
+    e.reset_osc = RESET_PATCH;
+    e.patch_number = 1024;
+    amy_add_event(&e);
+
+    // 1. Template osc 0
+    e = amy_default_event();
+    e.osc = 0;
+    e.patch_number = 1024;
+    e.wave = PCM;
+    e.preset = presetNum;
+    e.amp_coefs[COEF_CONST] = 1.0f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    amy_add_event(&e);
+
+    // 2. Instantiate on synth channel 3
+    e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.patch_number = 1024;
+    e.num_voices = 6;
+    e.volume = 3.0f;
+    amy_add_event(&e);
 
     sendAllParams();
 }

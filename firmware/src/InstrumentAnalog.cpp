@@ -192,19 +192,10 @@ void InstrumentAnalog::setupSynthVoices() {
     e.patch_number = 1024;
     amy_add_event(&e);
 
-    e = amy_default_event();
-    e.patch_number = 1024;
-    e.oscs_per_voice = 4;
-    e.synth = getSynthChannel();
-    e.num_voices = (params.voice_mode > 0.5f) ? 1 : 6;
-    e.portamento_ms = (uint16_t)params.glide_ms;
-    amy_add_event(&e);
-
-    // Osc 1 - with ADSR via EG0
+    // 1. Osc 1 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_1;
     e.patch_number = 1024;
-    e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc1_wave_f;
     e.amp_coefs[COEF_CONST] = 0.5f;
     e.amp_coefs[COEF_VEL] = 1.0f;
@@ -213,11 +204,10 @@ void InstrumentAnalog::setupSynthVoices() {
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // Osc 2 - with ADSR via EG0
+    // 2. Osc 2 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_2;
     e.patch_number = 1024;
-    e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc2_wave_f;
     e.amp_coefs[COEF_CONST] = 0.5f;
     e.amp_coefs[COEF_VEL] = 1.0f;
@@ -226,11 +216,10 @@ void InstrumentAnalog::setupSynthVoices() {
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // Noise
+    // 3. Noise
     e = amy_default_event();
     e.osc = OSC_NOISE;
     e.patch_number = 1024;
-    e.synth = getSynthChannel();
     e.wave = NOISE;
     float noiseAmp = (params.noise_pct / 100.0f) * 0.5f;
     if (noiseAmp < 0.001f) {
@@ -245,16 +234,24 @@ void InstrumentAnalog::setupSynthVoices() {
     e.chained_osc = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // LFO Filter modulator
+    // 4. LFO Filter modulator
     e = amy_default_event();
     e.osc = OSC_LFO_FILTER;
     e.patch_number = 1024;
-    e.synth = getSynthChannel();
     e.wave = TRIANGLE;
     e.freq_coefs[COEF_CONST] = params.lfo_freq_hz;
     e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f) * 1.5f;
     e.freq_coefs[COEF_NOTE] = 0;
     e.amp_coefs[COEF_NOTE] = 0;
+    amy_add_event(&e);
+
+    // 5. Instantiate patch 1024 across synth voices
+    e = amy_default_event();
+    e.patch_number = 1024;
+    e.oscs_per_voice = 4;
+    e.synth = getSynthChannel();
+    e.num_voices = (params.voice_mode > 0.5f) ? 1 : 6;
+    e.portamento_ms = (uint16_t)params.glide_ms;
     amy_add_event(&e);
 
     updateOscDetune();
