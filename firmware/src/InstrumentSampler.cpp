@@ -116,8 +116,6 @@ void InstrumentSampler::noteOn(uint8_t note, float velocity) {
 
 void InstrumentSampler::noteOff(uint8_t note) {
     if (!isActive || isRecording) return;
-
-    // One-shot drum/percussion samples generally play out their decay
 }
 
 void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
@@ -284,41 +282,56 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         u8g2.setFont(u8g2_font_5x7_tr);
         u8g2.drawStr(12, 56, buf);
     } else if (_currentPatch < 11) {
-        // Draw True ROM Waveform Preview
+        // Draw Clean ROM Drum Waveform Graphic
         u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
         u8g2.drawHLine(BOX_X + 2, MID_Y, BOX_W - 4);
 
-        uint16_t romIdx = romPresetMap[_currentPatch];
-        if (romIdx < pcm_samples) {
-            uint32_t offset = pcm_map[romIdx].offset;
-            uint32_t len = pcm_map[romIdx].length;
-            const int16_t* rom_data = (const int16_t*)pcm + offset;
+        int wave_cols = BOX_W - 8;
+        for (int x = 0; x < wave_cols; x++) {
+            float progress = (float)x / (float)wave_cols;
+            float amp = 0.0f;
 
-            int wave_cols = BOX_W - 8;
-            for (int x = 0; x < wave_cols; x++) {
-                uint32_t s_start = (x * len) / wave_cols;
-                uint32_t s_end = ((x + 1) * len) / wave_cols;
-                if (s_end > len) s_end = len;
-
-                int16_t max_v = 0;
-                for (uint32_t s = s_start; s < s_end; s++) {
-                    int16_t v = abs(rom_data[s]);
-                    if (v > max_v) max_v = v;
-                }
-
-                int bar_h = (int)((float)max_v / 32768.0f * (BOX_H / 2 - 4));
-                if (bar_h > 0) {
-                    u8g2.drawVLine(BOX_X + 4 + x, MID_Y - bar_h, bar_h * 2 + 1);
-                }
+            switch (_currentPatch) {
+                case 0: // 808 Kick: Heavy transient, pitch drop, sub decay
+                    amp = sinf(progress * 18.0f * (1.0f - progress * 0.7f)) * expf(-progress * 4.5f);
+                    break;
+                case 1: case 8: case 9: case 10: // Snares: Noise burst + tone body
+                    amp = (((((x * 73 + 17) % 100) - 50) / 50.0f) * 0.7f + sinf(progress * 40.0f) * 0.3f) * expf(-progress * 5.0f);
+                    break;
+                case 2: // Closed Hat: Fast metallic spike
+                    amp = ((((x * 97 + 13) % 100) - 50) / 50.0f) * expf(-progress * 16.0f);
+                    break;
+                case 3: // Open Hat: Shimmer decay
+                    amp = ((((x * 97 + 13) % 100) - 50) / 50.0f) * expf(-progress * 2.8f);
+                    break;
+                case 4: // Hand Clap: Triple burst
+                    if (progress < 0.15f) amp = sinf(progress * 80.0f) * 0.6f;
+                    else if (progress < 0.30f) amp = sinf(progress * 80.0f) * 0.8f;
+                    else amp = ((((x * 83 + 7) % 100) - 50) / 50.0f) * expf(-(progress - 0.3f) * 4.0f);
+                    break;
+                case 5: // Low Tom
+                    amp = sinf(progress * 22.0f) * expf(-progress * 3.5f);
+                    break;
+                case 6: // Cowbell: Dual metallic pulse
+                    amp = (sinf(progress * 35.0f) * 0.6f + sinf(progress * 53.0f) * 0.4f) * expf(-progress * 3.2f);
+                    break;
+                case 7: // Maraca: Soft burst
+                    amp = ((((x * 61 + 3) % 100) - 50) / 50.0f) * expf(-progress * 8.0f);
+                    break;
+                default:
+                    amp = sinf(progress * 20.0f) * expf(-progress * 4.0f);
+                    break;
             }
 
-            char tagBuf[24];
-            snprintf(tagBuf, sizeof(tagBuf), "%.2fs", (float)len / (float)PCM_AMY_SAMPLE_RATE);
-            u8g2.setFont(u8g2_font_5x7_tr);
-            u8g2.drawStr(BOX_X + 4, BOX_Y + 9, samplerPatchNames[_currentPatch]);
-            int tw = u8g2.getStrWidth(tagBuf);
-            u8g2.drawStr(BOX_X + BOX_W - tw - 4, BOX_Y + 9, tagBuf);
+            int bar_h = (int)(fabsf(amp) * (BOX_H / 2 - 5));
+            if (bar_h > 0) {
+                u8g2.drawVLine(BOX_X + 4 + x, MID_Y - bar_h, bar_h * 2 + 1);
+            }
         }
+
+        u8g2.setFont(u8g2_font_5x7_tr);
+        u8g2.drawStr(BOX_X + 6, BOX_Y + 9, samplerPatchNames[_currentPatch]);
+        u8g2.drawStr(BOX_X + BOX_W - 32, BOX_Y + 9, "ROM 808");
     } else {
         // User Live Recorded Audio Waveform Preview
         u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
@@ -343,7 +356,6 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
                 }
             }
 
-            // Draw Trim Markers
             int trimStartX = BOX_X + 4 + (_trim_start_samples * wave_cols) / original_length;
             int trimEndX = BOX_X + 4 + (_trim_end_samples * wave_cols) / original_length;
             u8g2.drawVLine(trimStartX, BOX_Y + 2, BOX_H - 4);
