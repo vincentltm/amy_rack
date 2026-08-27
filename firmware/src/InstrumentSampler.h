@@ -5,6 +5,7 @@
 
 #define SAMPLER_SAMPLE_RATE     22050
 #define SAMPLER_MAX_SAMPLES     (SAMPLER_SAMPLE_RATE * 3) // 3 seconds max
+#define SAMPLER_VOICES          6
 
 class InstrumentSampler : public Instrument {
 public:
@@ -23,8 +24,6 @@ public:
     void onParamChanged(uint8_t paramIndex) override;
     const ParamDescriptor *getParams() const override { return _samplerParams; }
     uint8_t getParamCount() const override { return _samplerParamCount; }
-
-    uint8_t getSynthChannel() override { return 3; }
 
     int getPatchCount() const override { return 12; }
     int getCurrentPatch() const override { return _currentPatch; }
@@ -46,6 +45,8 @@ private:
     volatile bool recordingFinished = false;
 
     uint16_t _amy_preset_num = 1;
+    uint8_t  _currentVoice = 0;
+    uint8_t  _voiceOscs[SAMPLER_VOICES] = { 0, 1, 2, 3, 4, 5 };
 
     // Parameters
     float _param_record = 0.0f;     // 0 = idle, 1 = record

@@ -62,9 +62,11 @@ void InstrumentSampler::stop() {
     }
 
     amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
     e.velocity = 0.0f;
-    amy_add_event(&e);
+    for (int i = 0; i < SAMPLER_VOICES; i++) {
+        e.osc = _voiceOscs[i];
+        amy_add_event(&e);
+    }
 
     isActive = false;
 }
@@ -93,8 +95,20 @@ void InstrumentSampler::noteOn(uint8_t note, float velocity) {
     if (!isActive || isRecording) return;
     if (_currentPatch == 11 && sample_length == 0) return;
 
+    uint16_t presetNum = 1;
+    if (_currentPatch == 11) {
+        presetNum = 11;
+    } else if (_currentPatch >= 0 && _currentPatch < 11) {
+        presetNum = romPresetMap[_currentPatch];
+    }
+
+    uint8_t voiceOsc = _voiceOscs[_currentVoice];
+    _currentVoice = (_currentVoice + 1) % SAMPLER_VOICES;
+
     amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
+    e.osc = voiceOsc;
+    e.wave = PCM;
+    e.preset = presetNum;
     e.midi_note = note;
     e.velocity = velocity * _param_gain;
     amy_add_event(&e);
@@ -103,11 +117,7 @@ void InstrumentSampler::noteOn(uint8_t note, float velocity) {
 void InstrumentSampler::noteOff(uint8_t note) {
     if (!isActive || isRecording) return;
 
-    amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.midi_note = note;
-    e.velocity = 0.0f;
-    amy_add_event(&e);
+    // One-shot drum/percussion samples generally play out their decay
 }
 
 void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
@@ -149,11 +159,6 @@ void InstrumentSampler::startRecording() {
     sample_index = 0;
     recordingFinished = false;
     sample_length = 0;
-
-    amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.velocity = 0.0f;
-    amy_add_event(&e);
 
     xTaskCreatePinnedToCore(
         recordingTaskWrapper,
@@ -243,67 +248,118 @@ void InstrumentSampler::setupSynthVoices() {
         presetNum = romPresetMap[_currentPatch];
     }
 
-    amy_event e = amy_default_event();
-    e.reset_osc = RESET_PATCH;
-    e.patch_number = 1024;
-    amy_add_event(&e);
-
-    e = amy_default_event();
-    e.osc = 0;
-    e.patch_number = 1024;
-    e.wave = PCM;
-    e.preset = presetNum;
-    amy_add_event(&e);
-
-    e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.patch_number = 1024;
-    e.num_voices = 6;
-    e.volume = 2.5f;
-    amy_add_event(&e);
+    for (int i = 0; i < SAMPLER_VOICES; i++) {
+        amy_event e = amy_default_event();
+        e.osc = _voiceOscs[i];
+        e.wave = PCM;
+        e.preset = presetNum;
+        e.velocity = 0.0f;
+        amy_add_event(&e);
+    }
 
     sendAllParams();
 }
 
 void InstrumentSampler::drawUI(U8G2 &u8g2) {
-    u8g2.setFont(u8g2_font_5x7_tr);
+    const int BOX_X = 4;
+    const int BOX_Y = 16;
+    const int BOX_W = 120;
+    const int BOX_H = 44;
+    const int MID_Y = BOX_Y + BOX_H / 2; // y = 38
+
     u8g2.setDrawColor(1);
 
     if (isRecording) {
+        u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
         u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.drawStr(10, 30, "[ RECORDING... ]");
+        u8g2.drawStr(12, 32, "* RECORDING... *");
 
-        int progress = (sample_index * 112) / SAMPLER_MAX_SAMPLES;
-        u8g2.drawFrame(8, 36, 112, 10);
-        u8g2.drawBox(10, 38, progress, 6);
+        int progress = (sample_index * 104) / SAMPLER_MAX_SAMPLES;
+        if (progress > 104) progress = 104;
+        u8g2.drawFrame(12, 38, 104, 8);
+        u8g2.drawBox(14, 40, progress, 4);
 
-        char buf[16];
+        char buf[20];
         snprintf(buf, sizeof(buf), "%.1f / 3.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 56, buf);
+        u8g2.drawStr(12, 56, buf);
     } else if (_currentPatch < 11) {
-        u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.drawStr(8, 28, "ROM PCM SAMPLE");
+        // Draw True ROM Waveform Preview
+        u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
+        u8g2.drawHLine(BOX_X + 2, MID_Y, BOX_W - 4);
 
-        u8g2.setFont(u8g2_font_6x10_tr);
-        u8g2.drawStr(8, 44, samplerPatchNames[_currentPatch]);
+        uint16_t romIdx = romPresetMap[_currentPatch];
+        if (romIdx < pcm_samples) {
+            uint32_t offset = pcm_map[romIdx].offset;
+            uint32_t len = pcm_map[romIdx].length;
+            const int16_t* rom_data = (const int16_t*)pcm + offset;
 
-        u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(8, 56, "808 Drum & Percussion Kit");
-    } else {
-        u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.drawStr(8, 28, "USER LIVE RECORDER");
+            int wave_cols = BOX_W - 8;
+            for (int x = 0; x < wave_cols; x++) {
+                uint32_t s_start = (x * len) / wave_cols;
+                uint32_t s_end = ((x + 1) * len) / wave_cols;
+                if (s_end > len) s_end = len;
 
-        u8g2.setFont(u8g2_font_6x10_tr);
-        if (original_length > 0) {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "Len: %.2fs", (float)sample_length / SAMPLER_SAMPLE_RATE);
-            u8g2.drawStr(8, 44, buf);
-        } else {
-            u8g2.drawStr(8, 44, "No Audio Recorded");
+                int16_t max_v = 0;
+                for (uint32_t s = s_start; s < s_end; s++) {
+                    int16_t v = abs(rom_data[s]);
+                    if (v > max_v) max_v = v;
+                }
+
+                int bar_h = (int)((float)max_v / 32768.0f * (BOX_H / 2 - 4));
+                if (bar_h > 0) {
+                    u8g2.drawVLine(BOX_X + 4 + x, MID_Y - bar_h, bar_h * 2 + 1);
+                }
+            }
+
+            char tagBuf[24];
+            snprintf(tagBuf, sizeof(tagBuf), "%.2fs", (float)len / (float)PCM_AMY_SAMPLE_RATE);
+            u8g2.setFont(u8g2_font_5x7_tr);
+            u8g2.drawStr(BOX_X + 4, BOX_Y + 9, samplerPatchNames[_currentPatch]);
+            int tw = u8g2.getStrWidth(tagBuf);
+            u8g2.drawStr(BOX_X + BOX_W - tw - 4, BOX_Y + 9, tagBuf);
         }
+    } else {
+        // User Live Recorded Audio Waveform Preview
+        u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
+        u8g2.drawHLine(BOX_X + 2, MID_Y, BOX_W - 4);
 
-        u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(8, 56, "Toggle 'Record' on SYNTH tab");
+        if (_record_buffer && original_length > 0) {
+            int wave_cols = BOX_W - 8;
+            for (int x = 0; x < wave_cols; x++) {
+                uint32_t s_start = (x * original_length) / wave_cols;
+                uint32_t s_end = ((x + 1) * original_length) / wave_cols;
+                if (s_end > original_length) s_end = original_length;
+
+                int16_t max_v = 0;
+                for (uint32_t s = s_start; s < s_end; s++) {
+                    int16_t v = abs(_record_buffer[s]);
+                    if (v > max_v) max_v = v;
+                }
+
+                int bar_h = (int)((float)max_v / 32768.0f * (BOX_H / 2 - 4));
+                if (bar_h > 0) {
+                    u8g2.drawVLine(BOX_X + 4 + x, MID_Y - bar_h, bar_h * 2 + 1);
+                }
+            }
+
+            // Draw Trim Markers
+            int trimStartX = BOX_X + 4 + (_trim_start_samples * wave_cols) / original_length;
+            int trimEndX = BOX_X + 4 + (_trim_end_samples * wave_cols) / original_length;
+            u8g2.drawVLine(trimStartX, BOX_Y + 2, BOX_H - 4);
+            u8g2.drawVLine(trimEndX, BOX_Y + 2, BOX_H - 4);
+
+            char tagBuf[24];
+            snprintf(tagBuf, sizeof(tagBuf), "%.2fs", (float)sample_length / SAMPLER_SAMPLE_RATE);
+            u8g2.setFont(u8g2_font_5x7_tr);
+            u8g2.drawStr(BOX_X + 4, BOX_Y + 9, "LIVE RAM");
+            int tw = u8g2.getStrWidth(tagBuf);
+            u8g2.drawStr(BOX_X + BOX_W - tw - 4, BOX_Y + 9, tagBuf);
+        } else {
+            u8g2.setFont(u8g2_font_6x10_tr);
+            u8g2.drawStr(12, 34, "No Audio Sample");
+            u8g2.setFont(u8g2_font_5x7_tr);
+            u8g2.drawStr(12, 48, "Toggle 'Record' on SYNTH tab");
+        }
     }
 }

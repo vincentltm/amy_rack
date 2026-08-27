@@ -93,6 +93,7 @@ public:
 
 private:
     uint8_t patch = 0;
+    float _param_hpf = 0.0f;
     JunoState state;
     ParamDescriptor _junoParams[MAX_PARAMS];
     uint8_t _junoParamCount = 0;
