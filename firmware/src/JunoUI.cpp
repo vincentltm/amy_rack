@@ -59,10 +59,10 @@ void drawDualSlider(U8G2 &u8g2, uint8_t centerX, uint8_t leftTipY, uint8_t right
 void InstrumentJuno::drawUI(U8G2 &u8g2) {
     const uint8_t screenWidth = 128;
     const uint8_t headerBoxHeight = 8;
-    const uint8_t graphHeight = 32;
-    const uint8_t headerY = 17; // Starts directly below main header
-    const uint8_t graphTop = headerY + headerBoxHeight; // 25
-    const uint8_t graphBottom = graphTop + graphHeight; // 57
+    const uint8_t graphHeight = 44;
+    const uint8_t headerY = 28; // Starts directly below tab bar
+    const uint8_t graphTop = headerY + headerBoxHeight; // 36
+    const uint8_t graphBottom = graphTop + graphHeight; // 80
 
     // 5 column headers
     u8g2.setFont(u8g2_font_5x7_tr);

@@ -16,16 +16,11 @@ static void cleanString(char* dest, const char* src, size_t maxLen) {
     }
 }
 
-static const char* catNames[] = {
-    "1. SYNTH CONTROLS",
-    "2. FILTER & ENV",
-    "3. EFFECTS (FX)"
-};
-
-static const char* catShortHeaders[] = {
-    "[ SYNTH SETTINGS ]",
-    "[ FILTER & ENV ]",
-    "[ FX SETTINGS ]"
+static const char* tabLabels[TAB_COUNT] = {
+    "MAIN",
+    "SYNTH",
+    "ENV",
+    "FX"
 };
 
 Display::Display() : u8g2(U8G2_R0, U8X8_PIN_NONE, I2C_SCL_PIN, I2C_SDA_PIN) {
@@ -60,33 +55,21 @@ void Display::update(System& sys, MidiManager& midi) {
         return;
     }
 
-    if (state == NavState::CATEGORY_SELECT) {
-        uint8_t catSel = sys.getSelectedCategory();
-        bool dirty = (navStateInt != lastNavState) || (catSel != lastCategory) || needsRedraw;
-        lastNavState = navStateInt;
-        lastCategory = catSel;
-
-        if (dirty) {
-            drawCategoryMenu(catSel);
-        }
-        return;
-    }
-
     lastNavState = navStateInt;
 
     Instrument* inst = sys.getActiveInstrument();
+    TabId activeTab = sys.getActiveTab();
     const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
-    uint8_t catIdx = sys.getSelectedCategory();
-    uint8_t filteredCount = sys.getFilteredParamCount();
+    uint8_t tabParamCount = sys.getTabParamCount();
     uint8_t midiCh = midi.getLastChannel();
     uint8_t lastNote = midi.getLastNote();
     bool gateActive = midi.isNoteActive();
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
 
-    bool dirty = (inst != lastInst) || (selectedIdx != lastSelectedIdx) || 
-                 (editing != lastEditing) || (catIdx != lastCategory) ||
+    bool dirty = (inst != lastInst) || (activeTab != lastTab) ||
+                 (selectedIdx != lastSelectedIdx) || (editing != lastEditing) ||
                  (midiCh != lastMidiCh) || (lastNote != this->lastNote) || 
                  (gateActive != lastGateActive) || (currentPatch != lastPatch) || 
                  (inst && inst->needsUIRedraw) || needsRedraw;
@@ -94,9 +77,9 @@ void Display::update(System& sys, MidiManager& midi) {
     if (!dirty) return;
 
     lastInst = inst;
+    lastTab = activeTab;
     lastSelectedIdx = selectedIdx;
     lastEditing = editing;
-    lastCategory = catIdx;
     lastMidiCh = midiCh;
     this->lastNote = lastNote;
     lastGateActive = gateActive;
@@ -108,15 +91,18 @@ void Display::update(System& sys, MidiManager& midi) {
 
     if (inst) {
         drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch);
-        drawInstrumentUI(inst);
-    }
-    
-    if (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT) {
-        uint8_t filteredIndices[MAX_PARAMS];
-        for (uint8_t i = 0; i < filteredCount; i++) {
-            filteredIndices[i] = sys.getFilteredParamRealIndex(i);
+        drawTabBar(activeTab, (state == NavState::TAB_SELECT));
+
+        if (activeTab == TabId::TAB_MAIN) {
+            drawInstrumentUI(inst);
+        } else {
+            uint8_t tabIndices[MAX_PARAMS];
+            for (uint8_t i = 0; i < tabParamCount; i++) {
+                tabIndices[i] = sys.getTabParamRealIndex(i);
+            }
+            bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
+            drawTabParams(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
         }
-        drawFilteredParamList(allParams, filteredIndices, filteredCount, selectedIdx, editing, catIdx);
     }
     
     drawStatusBar(midiCh, lastNote, gateActive, navStateInt);
@@ -138,32 +124,30 @@ void Display::update(System& sys) {
         return;
     }
 
-    if (state == NavState::CATEGORY_SELECT) {
-        drawCategoryMenu(sys.getSelectedCategory());
-        return;
-    }
-
     Instrument* inst = sys.getActiveInstrument();
+    TabId activeTab = sys.getActiveTab();
     const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
-    uint8_t catIdx = sys.getSelectedCategory();
-    uint8_t filteredCount = sys.getFilteredParamCount();
+    uint8_t tabParamCount = sys.getTabParamCount();
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
 
     u8g2.clearBuffer();
 
     if (inst) {
         drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch);
-        drawInstrumentUI(inst);
-    }
-    
-    if (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT) {
-        uint8_t filteredIndices[MAX_PARAMS];
-        for (uint8_t i = 0; i < filteredCount; i++) {
-            filteredIndices[i] = sys.getFilteredParamRealIndex(i);
+        drawTabBar(activeTab, (state == NavState::TAB_SELECT));
+
+        if (activeTab == TabId::TAB_MAIN) {
+            drawInstrumentUI(inst);
+        } else {
+            uint8_t tabIndices[MAX_PARAMS];
+            for (uint8_t i = 0; i < tabParamCount; i++) {
+                tabIndices[i] = sys.getTabParamRealIndex(i);
+            }
+            bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
+            drawTabParams(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
         }
-        drawFilteredParamList(allParams, filteredIndices, filteredCount, selectedIdx, editing, catIdx);
     }
     
     drawStatusBar(0, 255, false, navStateInt);
@@ -197,7 +181,46 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
         u8g2.drawStr(SCREEN_WIDTH - w, 10, buf);
     }
     
-    u8g2.drawHLine(0, 14, SCREEN_WIDTH);
+    u8g2.drawHLine(0, 12, SCREEN_WIDTH);
+}
+
+void Display::drawTabBar(TabId activeTab, bool tabFocus) {
+    const uint8_t tabW = 28;
+    const uint8_t tabH = 10;
+    const uint8_t gap = 2;
+    const uint8_t startX = (SCREEN_WIDTH - (tabW * TAB_COUNT + gap * (TAB_COUNT - 1))) / 2; // 5px
+    const uint8_t y = TAB_BAR_Y;
+
+    u8g2.setFont(FONT_TAB);
+
+    for (uint8_t i = 0; i < TAB_COUNT; i++) {
+        uint8_t x = startX + i * (tabW + gap);
+        bool isActive = (i == (uint8_t)activeTab);
+
+        if (isActive) {
+            if (tabFocus) {
+                // Focused on Tab Bar: solid filled active tab
+                u8g2.setDrawColor(1);
+                u8g2.drawBox(x, y, tabW, tabH);
+                u8g2.setDrawColor(0);
+            } else {
+                // In tab content: framed active tab with bottom indicator
+                u8g2.setDrawColor(1);
+                u8g2.drawFrame(x, y, tabW, tabH);
+                u8g2.drawBox(x + 2, y + tabH - 2, tabW - 4, 2);
+                u8g2.setDrawColor(1);
+            }
+        } else {
+            u8g2.setDrawColor(1);
+            // Inactive tabs
+        }
+
+        int tw = u8g2.getStrWidth(tabLabels[i]);
+        u8g2.drawStr(x + (tabW - tw) / 2, y + 8, tabLabels[i]);
+        u8g2.setDrawColor(1);
+    }
+
+    u8g2.drawHLine(0, TAB_BAR_Y + TAB_BAR_H + 1, SCREEN_WIDTH);
 }
 
 void Display::drawInstrumentUI(Instrument* inst) {
@@ -206,49 +229,17 @@ void Display::drawInstrumentUI(Instrument* inst) {
     }
 }
 
-void Display::drawCategoryMenu(uint8_t selectedCat) {
-    u8g2.clearBuffer();
-    
-    // Header
-    u8g2.setFont(u8g2_font_6x10_tr);
-    u8g2.setDrawColor(1);
-    const char* title = "-- SETTINGS MENU --";
-    int tw = u8g2.getStrWidth(title);
-    u8g2.drawStr((SCREEN_WIDTH - tw) / 2, 12, title);
-    u8g2.drawHLine(0, 15, SCREEN_WIDTH);
-
-    // 3 Category Cards
-    u8g2.setFont(u8g2_font_7x14B_tr);
-    for (uint8_t i = 0; i < 3; i++) {
-        int y = 30 + i * 28;
-        if (i == selectedCat) {
-            u8g2.setDrawColor(1);
-            u8g2.drawBox(4, y, SCREEN_WIDTH - 8, 22);
-            u8g2.setDrawColor(0); // Inverted
-        } else {
-            u8g2.setDrawColor(1);
-            u8g2.drawFrame(4, y, SCREEN_WIDTH - 8, 22);
-        }
-        
-        int w = u8g2.getStrWidth(catNames[i]);
-        u8g2.drawStr((SCREEN_WIDTH - w) / 2, y + 16, catNames[i]);
+void Display::drawTabParams(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus) {
+    if (count == 0) {
+        u8g2.setFont(FONT_PARAM_NAME);
+        u8g2.setDrawColor(1);
+        u8g2.drawStr(12, CONTENT_Y + 25, "No Parameters");
+        return;
     }
-    
-    // Bottom hint
-    u8g2.setDrawColor(1);
-    u8g2.drawHLine(0, 116, SCREEN_WIDTH);
-    u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(6, 125, "Click: Select | Hold: Back");
 
-    u8g2.sendBuffer();
-    needsRedraw = true;
-}
-
-void Display::drawFilteredParamList(const ParamDescriptor* allParams, const uint8_t* filteredIndices, uint8_t count, uint8_t selectedIdx, bool editing, uint8_t catIdx) {
-    u8g2.drawHLine(0, PARAM_LIST_Y - 2, SCREEN_WIDTH);
     u8g2.setFont(FONT_PARAM_NAME);
     
-    uint8_t visibleRows = PARAM_LIST_H / PARAM_LIST_ROW_H;
+    uint8_t visibleRows = 6;
     uint8_t startIdx = 0;
     
     if (selectedIdx >= visibleRows) {
@@ -256,16 +247,16 @@ void Display::drawFilteredParamList(const ParamDescriptor* allParams, const uint
     }
     
     for (uint8_t i = 0; i < visibleRows; i++) {
-        uint8_t fIdx = startIdx + i;
-        if (fIdx >= count) break;
+        uint8_t tIdx = startIdx + i;
+        if (tIdx >= count) break;
         
-        uint8_t realIdx = filteredIndices[fIdx];
-        int y = PARAM_LIST_Y + (i * PARAM_LIST_ROW_H);
-        bool isSelected = (fIdx == selectedIdx);
+        uint8_t realIdx = tabIndices[tIdx];
+        int y = CONTENT_Y + (i * PARAM_ROW_H);
+        bool isSelected = (tIdx == selectedIdx && hasFocus);
         
         if (isSelected) {
             u8g2.setDrawColor(1);
-            u8g2.drawBox(0, y, SCREEN_WIDTH, PARAM_LIST_ROW_H);
+            u8g2.drawBox(0, y, SCREEN_WIDTH, PARAM_ROW_H);
             u8g2.setDrawColor(0);
         } else {
             u8g2.setDrawColor(1);
@@ -274,16 +265,16 @@ void Display::drawFilteredParamList(const ParamDescriptor* allParams, const uint
         if (isSelected && editing) {
             char nameWithIndicator[32];
             snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", allParams[realIdx].name);
-            u8g2.drawStr(2, y + 8, nameWithIndicator);
+            u8g2.drawStr(2, y + 10, nameWithIndicator);
         } else {
-            u8g2.drawStr(2, y + 8, allParams[realIdx].name);
+            u8g2.drawStr(2, y + 10, allParams[realIdx].name);
         }
         
         char valBuf[32];
         allParams[realIdx].formatValue(valBuf, sizeof(valBuf));
         
         int w = u8g2.getStrWidth(valBuf);
-        u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 8, valBuf);
+        u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 10, valBuf);
     }
     u8g2.setDrawColor(1);
 }
@@ -293,8 +284,8 @@ void Display::drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, u
     u8g2.setFont(FONT_STATUS);
     u8g2.setDrawColor(1);
     
-    const char* modeStr = "[PATCH]";
-    if (navState == 2) modeStr = "[MENU]";
+    const char* modeStr = "[TAB]";
+    if (navState == 2) modeStr = "[PATCH]";
     else if (navState == 3) modeStr = "[PARAM]";
     else if (navState == 4) modeStr = "[EDIT]";
 

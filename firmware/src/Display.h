@@ -17,9 +17,9 @@ public:
     void update(System& sys);
 
     void drawHeader(const char* instName, const char* patchName, int patchIndex = -1);
+    void drawTabBar(TabId activeTab, bool tabFocus);
     void drawInstrumentUI(Instrument* inst);
-    void drawCategoryMenu(uint8_t selectedCat);
-    void drawFilteredParamList(const ParamDescriptor* allParams, const uint8_t* filteredIndices, uint8_t count, uint8_t selectedIdx, bool editing, uint8_t catIdx);
+    void drawTabParams(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus);
     void drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, uint8_t navState = 0);
     void drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected);
     void showSplash();
@@ -31,7 +31,7 @@ private:
     
     Instrument* lastInst = nullptr;
     uint8_t lastSelectedIdx = 255;
-    uint8_t lastCategory = 255;
+    TabId lastTab = (TabId)255;
     bool lastEditing = false;
     uint8_t lastMidiCh = 255;
     uint8_t lastNote = 255;

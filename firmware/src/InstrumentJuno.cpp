@@ -9,22 +9,22 @@ InstrumentJuno::InstrumentJuno() {
 void InstrumentJuno::init() {
     buildBaseParams();
 
-    // Category: SYNTH
-    _junoParams[0] = PARAM_PCT("DCO PWM",   0.0f, 100.0f, 2.0f, &state.dco_pwm,   CAT_SYNTH);
-    _junoParams[1] = PARAM_PCT("Saw Lvl",   0.0f, 100.0f, 5.0f, &state.saw_level, CAT_SYNTH);
-    _junoParams[2] = PARAM_PCT("Sub Lvl",   0.0f, 100.0f, 5.0f, &state.dco_sub,   CAT_SYNTH);
-    _junoParams[3] = PARAM_PCT("Noise Lvl", 0.0f, 100.0f, 5.0f, &state.dco_noise, CAT_SYNTH);
-    _junoParams[4] = PARAM_INT("HPF", "",   0, 3,               &state.hpf,       CAT_SYNTH);
+    // Tab: SYNTH
+    _junoParams[0] = PARAM_PCT("DCO PWM",   0.0f, 100.0f, 2.0f, &state.dco_pwm,   TAB_SYNTH);
+    _junoParams[1] = PARAM_PCT("Saw Lvl",   0.0f, 100.0f, 5.0f, &state.saw_level, TAB_SYNTH);
+    _junoParams[2] = PARAM_PCT("Sub Lvl",   0.0f, 100.0f, 5.0f, &state.dco_sub,   TAB_SYNTH);
+    _junoParams[3] = PARAM_PCT("Noise Lvl", 0.0f, 100.0f, 5.0f, &state.dco_noise, TAB_SYNTH);
+    _junoParams[4] = PARAM_INT("HPF", "",   0, 3,               &state.hpf,       TAB_SYNTH);
 
-    // Category: FILTER & ENV
-    _junoParams[5] = PARAM_PCT("VCF Freq",  0.0f, 100.0f, 2.0f, &state.vcf_freq,  CAT_FILTER_ENV);
-    _junoParams[6] = PARAM_PCT("VCF Res",   0.0f, 100.0f, 2.0f, &state.vcf_res,   CAT_FILTER_ENV);
-    _junoParams[7] = PARAM_PCT("VCF LFO",   0.0f, 100.0f, 5.0f, &state.vcf_lfo,   CAT_FILTER_ENV);
-    _junoParams[8] = PARAM_HZ("LFO Rate",   0.1f, 20.0f,  0.2f, &state.lfo_rate,  CAT_FILTER_ENV);
-    _junoParams[9] = PARAM_MS("Env A",      1.0f, 4000.0f,10.0f,&state.env_a_ms,  CAT_FILTER_ENV);
-    _junoParams[10]= PARAM_MS("Env D",      5.0f, 4000.0f,20.0f,&state.env_d_ms,  CAT_FILTER_ENV);
-    _junoParams[11]= PARAM_PCT("Env S",     0.0f, 100.0f, 5.0f, &state.env_s_pct, CAT_FILTER_ENV);
-    _junoParams[12]= PARAM_MS("Env R",      5.0f, 4000.0f,20.0f,&state.env_r_ms,  CAT_FILTER_ENV);
+    // Tab: ENV
+    _junoParams[5] = PARAM_PCT("VCF Freq",  0.0f, 100.0f, 2.0f, &state.vcf_freq,  TAB_ENV);
+    _junoParams[6] = PARAM_PCT("VCF Res",   0.0f, 100.0f, 2.0f, &state.vcf_res,   TAB_ENV);
+    _junoParams[7] = PARAM_PCT("VCF LFO",   0.0f, 100.0f, 5.0f, &state.vcf_lfo,   TAB_ENV);
+    _junoParams[8] = PARAM_HZ("LFO Rate",   0.1f, 20.0f,  0.2f, &state.lfo_rate,  TAB_ENV);
+    _junoParams[9] = PARAM_MS("Env A",      1.0f, 4000.0f,10.0f,&state.env_a_ms,  TAB_ENV);
+    _junoParams[10]= PARAM_MS("Env D",      5.0f, 4000.0f,20.0f,&state.env_d_ms,  TAB_ENV);
+    _junoParams[11]= PARAM_PCT("Env S",     0.0f, 100.0f, 5.0f, &state.env_s_pct, TAB_ENV);
+    _junoParams[12]= PARAM_MS("Env R",      5.0f, 4000.0f,20.0f,&state.env_r_ms,  TAB_ENV);
 
     _junoParamCount = 13;
 

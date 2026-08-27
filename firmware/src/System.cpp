@@ -22,7 +22,8 @@ void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager 
 
     initInstruments();
     switchInstrument(DEFAULT_INSTRUMENT);
-    enterState(NavState::PATCH_SELECT);
+    _activeTab = TabId::TAB_MAIN;
+    enterState(NavState::TAB_SELECT);
 }
 
 void System::initInstruments() {
@@ -39,35 +40,35 @@ void System::initInstruments() {
 
 void System::update() {
     switch (_navState) {
-        case NavState::ENGINE_MENU:     handleEngineMenu();     break;
-        case NavState::PATCH_SELECT:    handlePatchSelect();    break;
-        case NavState::CATEGORY_SELECT: handleCategorySelect(); break;
-        case NavState::PARAM_SELECT:    handleParamSelect();    break;
-        case NavState::PARAM_EDIT:      handleParamEdit();      break;
+        case NavState::ENGINE_MENU:  handleEngineMenu();  break;
+        case NavState::TAB_SELECT:   handleTabSelect();   break;
+        case NavState::PATCH_BROWSE: handlePatchBrowse(); break;
+        case NavState::PARAM_SELECT: handleParamSelect(); break;
+        case NavState::PARAM_EDIT:   handleParamEdit();   break;
     }
 
     Instrument *inst = getActiveInstrument();
     if (inst) inst->update();
 }
 
-void System::updateFilteredParams() {
+void System::updateTabParams() {
     Instrument *inst = getActiveInstrument();
-    _filteredParamCount = 0;
+    _tabParamCount = 0;
     if (!inst) return;
 
     const ParamDescriptor *params = inst->getParams();
     uint8_t totalParams = inst->getParamCount();
 
     for (uint8_t i = 0; i < totalParams; i++) {
-        if (params[i].category == (ParamCategory)_selectedCategory) {
-            _filteredIndices[_filteredParamCount++] = i;
+        if (params[i].tab == _activeTab) {
+            _tabIndices[_tabParamCount++] = i;
         }
     }
 }
 
-uint8_t System::getFilteredParamRealIndex(uint8_t filteredIdx) const {
-    if (filteredIdx < _filteredParamCount) {
-        return _filteredIndices[filteredIdx];
+uint8_t System::getTabParamRealIndex(uint8_t idx) const {
+    if (idx < _tabParamCount) {
+        return _tabIndices[idx];
     }
     return 0;
 }
@@ -78,12 +79,12 @@ uint8_t System::getFilteredParamRealIndex(uint8_t filteredIdx) const {
 void System::handleEngineMenu() {
     if (_encoder->wasPressed()) {
         switchInstrument(_menuSelection);
-        enterState(NavState::PATCH_SELECT);
+        enterState(NavState::TAB_SELECT);
         return;
     }
 
     if (_encoder->wasLongPressed()) {
-        enterState(NavState::PATCH_SELECT);
+        enterState(NavState::TAB_SELECT);
         return;
     }
 
@@ -96,23 +97,65 @@ void System::handleEngineMenu() {
 }
 
 // -----------------------------------------------------------------------------
-// Level 1: PATCH_SELECT (Browse presets on main engine screen)
+// Level 1: TAB_SELECT (Horizontal Tab Bar: MAIN | SYNTH | ENV | FX)
 // -----------------------------------------------------------------------------
-void System::handlePatchSelect() {
-    // Long press -> Go UP to Level 0 (ENGINE_MENU)
+void System::handleTabSelect() {
+    // Long press -> Open Engine Menu
     if (_encoder->wasLongPressed()) {
         _menuSelection = _currentInstrument;
         enterState(NavState::ENGINE_MENU);
         return;
     }
 
-    // Click -> Go DOWN to Level 2 (CATEGORY_SELECT)
+    // Click -> Dive into active tab
     if (_encoder->wasPressed()) {
-        enterState(NavState::CATEGORY_SELECT);
+        if (_activeTab == TabId::TAB_MAIN) {
+            Instrument *inst = getActiveInstrument();
+            if (inst && inst->getPatchCount() > 0) {
+                enterState(NavState::PATCH_BROWSE);
+            } else {
+                // If no patches, jump directly to SYNTH tab
+                _activeTab = TabId::TAB_SYNTH;
+                updateTabParams();
+                _selectedParam = 0;
+                enterState(NavState::PARAM_SELECT);
+            }
+        } else {
+            // Dive into parameter list of current tab
+            updateTabParams();
+            _selectedParam = 0;
+            _paramScrollTop = 0;
+            if (_tabParamCount > 0) {
+                enterState(NavState::PARAM_SELECT);
+            }
+        }
         return;
     }
 
-    // Turn -> Cycle through preset patches
+    // Turn -> Switch Tab horizontally
+    int delta = _encoder->getDelta();
+    if (delta != 0) {
+        int newTab = (int)_activeTab + delta;
+        newTab = constrain(newTab, 0, (int)TabId::TAB_COUNT - 1);
+        _activeTab = (TabId)newTab;
+        updateTabParams();
+        _selectedParam = 0;
+        Instrument *inst = getActiveInstrument();
+        if (inst) inst->needsUIRedraw = true;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Level 2: PATCH_BROWSE (When on MAIN tab and clicked)
+// -----------------------------------------------------------------------------
+void System::handlePatchBrowse() {
+    // Click or Long press -> Confirm patch & go back to TAB_SELECT
+    if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
+        enterState(NavState::TAB_SELECT);
+        return;
+    }
+
+    // Turn -> Scroll preset patches
     int delta = _encoder->getDelta();
     if (delta != 0) {
         Instrument *inst = getActiveInstrument();
@@ -121,72 +164,40 @@ void System::handlePatchSelect() {
             newPatch = constrain(newPatch, 0, inst->getPatchCount() - 1);
             inst->setPatch(newPatch);
             inst->needsUIRedraw = true;
-        } else {
-            enterState(NavState::CATEGORY_SELECT);
         }
     }
 }
 
 // -----------------------------------------------------------------------------
-// Level 2: CATEGORY_SELECT (Choose Settings Category: SYNTH, FILTER/ENV, FX)
-// -----------------------------------------------------------------------------
-void System::handleCategorySelect() {
-    // Long press -> Go UP to Level 1 (PATCH_SELECT)
-    if (_encoder->wasLongPressed()) {
-        enterState(NavState::PATCH_SELECT);
-        return;
-    }
-
-    // Click -> Select category and go DOWN to Level 3 (PARAM_SELECT)
-    if (_encoder->wasPressed()) {
-        _selectedParam = 0;
-        _paramScrollTop = 0;
-        updateFilteredParams();
-        enterState(NavState::PARAM_SELECT);
-        return;
-    }
-
-    // Turn -> Scroll through categories
-    int delta = _encoder->getDelta();
-    if (delta != 0) {
-        int newCat = (int)_selectedCategory + delta;
-        newCat = constrain(newCat, 0, (int)CAT_COUNT - 1);
-        _selectedCategory = (uint8_t)newCat;
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Level 3: PARAM_SELECT (Browse settings list within chosen category)
+// Level 3: PARAM_SELECT (Scroll parameters inside active tab)
 // -----------------------------------------------------------------------------
 void System::handleParamSelect() {
     Instrument *inst = getActiveInstrument();
-    if (!inst) return;
-
-    if (_filteredParamCount == 0) {
-        enterState(NavState::CATEGORY_SELECT);
+    if (!inst || _tabParamCount == 0) {
+        enterState(NavState::TAB_SELECT);
         return;
     }
 
-    // Long press -> Go UP to Level 2 (CATEGORY_SELECT)
+    // Long press -> Go back UP to Tab Bar
     if (_encoder->wasLongPressed()) {
-        enterState(NavState::CATEGORY_SELECT);
+        enterState(NavState::TAB_SELECT);
         return;
     }
 
-    // Click -> Go DOWN to Level 4 (PARAM_EDIT)
+    // Click -> Enter PARAM_EDIT mode for highlighted setting
     if (_encoder->wasPressed()) {
         enterState(NavState::PARAM_EDIT);
         return;
     }
 
-    // Turn -> Scroll through parameter list
+    // Turn -> Scroll parameters in this tab
     int delta = _encoder->getDelta();
     if (delta != 0) {
         int newSel = (int)_selectedParam + delta;
-        newSel = constrain(newSel, 0, (int)_filteredParamCount - 1);
+        newSel = constrain(newSel, 0, (int)_tabParamCount - 1);
         _selectedParam = (uint8_t)newSel;
 
-        uint8_t visibleRows = PARAM_LIST_H / PARAM_LIST_ROW_H;
+        uint8_t visibleRows = 6;
         if (_selectedParam < _paramScrollTop) {
             _paramScrollTop = _selectedParam;
         } else if (_selectedParam >= _paramScrollTop + visibleRows) {
@@ -196,21 +207,21 @@ void System::handleParamSelect() {
 }
 
 // -----------------------------------------------------------------------------
-// Level 4: PARAM_EDIT (Adjust setting value)
+// Level 4: PARAM_EDIT (Adjust setting value in real-time)
 // -----------------------------------------------------------------------------
 void System::handleParamEdit() {
     Instrument *inst = getActiveInstrument();
     if (!inst) return;
 
-    if (_selectedParam >= _filteredParamCount) {
+    if (_selectedParam >= _tabParamCount) {
         enterState(NavState::PARAM_SELECT);
         return;
     }
 
-    uint8_t realIdx = _filteredIndices[_selectedParam];
+    uint8_t realIdx = _tabIndices[_selectedParam];
     const ParamDescriptor *params = inst->getParams();
 
-    // Click or Long press -> Confirm & go UP to Level 3
+    // Click or Long press -> Confirm & return to PARAM_SELECT
     if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
         enterState(NavState::PARAM_SELECT);
         return;
@@ -248,7 +259,7 @@ void System::switchInstrument(uint8_t index) {
 
     _selectedParam = 0;
     _paramScrollTop = 0;
-    updateFilteredParams();
+    updateTabParams();
 }
 
 const char* System::getInstrumentName(uint8_t i) const {

@@ -25,11 +25,11 @@ void InstrumentSampler::init() {
 
     buildBaseParams();
 
-    // Category: SYNTH
-    _samplerParams[0] = PARAM_INT("Record", "", 0, 1,         &_param_record,     CAT_SYNTH);
-    _samplerParams[1] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, CAT_SYNTH);
-    _samplerParams[2] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, CAT_SYNTH);
-    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain, CAT_SYNTH);
+    // Tab: SYNTH
+    _samplerParams[0] = PARAM_INT("Record", "", 0, 1,         &_param_record,     TAB_SYNTH);
+    _samplerParams[1] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, TAB_SYNTH);
+    _samplerParams[2] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, TAB_SYNTH);
+    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain, TAB_SYNTH);
 
     _samplerParamCount = 4;
     for (int i = 0; i < _baseParamCount; i++) {
@@ -215,28 +215,28 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
     if (isRecording) {
         u8g2.setFont(u8g2_font_7x14B_tr);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(10, 30, "[ RECORDING... ]");
+        u8g2.drawStr(10, 42, "[ RECORDING... ]");
 
         int progress = (sample_index * 112) / SAMPLER_MAX_SAMPLES;
-        u8g2.drawFrame(8, 38, 112, 12);
-        u8g2.drawBox(10, 40, progress, 8);
+        u8g2.drawFrame(8, 50, 112, 12);
+        u8g2.drawBox(10, 52, progress, 8);
 
         char buf[16];
         snprintf(buf, sizeof(buf), "%.1f / 5.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 62, buf);
+        u8g2.drawStr(10, 74, buf);
     } else if (original_length == 0) {
         u8g2.setFont(u8g2_font_6x10_tr);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(10, 32, "No Sample Loaded");
+        u8g2.drawStr(10, 48, "No Sample Loaded");
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 48, "Select 'Record' to capture");
-        u8g2.drawFrame(8, 54, 112, 10);
+        u8g2.drawStr(10, 64, "Select 'Record' in SYNTH tab");
+        u8g2.drawFrame(8, 72, 112, 10);
     } else {
         const int WAVE_X = 4;
-        const int WAVE_Y = 20;
+        const int WAVE_Y = 36;
         const int WAVE_W = 120;
-        const int WAVE_H = 36;
+        const int WAVE_H = 44;
         const int WAVE_CENTER = WAVE_Y + WAVE_H / 2;
 
         u8g2.setDrawColor(1);

@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// System.h — Navigation state machine with Category & FX Menu support
+// System.h — Tabbed Navigation Architecture for AMY Rack
 // =============================================================================
 
 #include <Arduino.h>
@@ -13,17 +13,17 @@ class CVManager;
 class MidiManager;
 
 // Hierarchical Navigation States:
-// Level 0: ENGINE_MENU     (Choose engine: DX7, Juno, Analog, Sampler, Piano)
-// Level 1: PATCH_SELECT    (Main engine preset viewer)
-// Level 2: CATEGORY_SELECT (Top Settings Menu: SYNTH | FILTER/ENV | EFFECTS)
-// Level 3: PARAM_SELECT    (Settings list within chosen category)
-// Level 4: PARAM_EDIT      (Adjust setting value)
+// Level 0: ENGINE_MENU   (Switch engine: DX7, Juno, Analog, Sampler, Piano)
+// Level 1: TAB_SELECT    (Browse horizontal tabs: MAIN | SYNTH | ENV | FX)
+// Level 2: PATCH_BROWSE  (Browse presets when on MAIN tab)
+// Level 3: PARAM_SELECT  (Scroll settings inside active tab)
+// Level 4: PARAM_EDIT    (Adjust setting value in real-time)
 enum class NavState : uint8_t {
-    ENGINE_MENU     = 0,
-    PATCH_SELECT    = 1,
-    CATEGORY_SELECT = 2,
-    PARAM_SELECT    = 3,
-    PARAM_EDIT      = 4
+    ENGINE_MENU  = 0,
+    TAB_SELECT   = 1,
+    PATCH_BROWSE = 2,
+    PARAM_SELECT = 3,
+    PARAM_EDIT   = 4
 };
 
 class System {
@@ -33,17 +33,17 @@ public:
 
     // --- State accessors ---
     NavState        getNavState()               const { return _navState; }
+    TabId           getActiveTab()              const { return _activeTab; }
     Instrument*     getActiveInstrument()       const { return _instruments[_currentInstrument]; }
     uint8_t         getCurrentInstrumentIndex() const { return _currentInstrument; }
     uint8_t         getNumInstruments()         const { return NUM_INSTRUMENTS; }
     const char*     getInstrumentName(uint8_t i) const;
 
-    // Parameter & Category state
-    uint8_t         getSelectedCategory()       const { return _selectedCategory; }
+    // Parameter & Tab state
     uint8_t         getSelectedParamIndex()     const { return _selectedParam; }
     bool            isEditingParam()            const { return _navState == NavState::PARAM_EDIT; }
-    uint8_t         getFilteredParamCount()     const { return _filteredParamCount; }
-    uint8_t         getFilteredParamRealIndex(uint8_t filteredIdx) const;
+    uint8_t         getTabParamCount()          const { return _tabParamCount; }
+    uint8_t         getTabParamRealIndex(uint8_t idx) const;
 
     // Engine menu state
     uint8_t         getMenuSelection()          const { return _menuSelection; }
@@ -56,28 +56,28 @@ private:
     CVManager    *_cv       = nullptr;
     MidiManager  *_midi     = nullptr;
 
-    NavState _navState = NavState::PATCH_SELECT;
+    NavState _navState   = NavState::TAB_SELECT;
+    TabId    _activeTab  = TabId::TAB_MAIN;
 
     uint8_t     _currentInstrument = DEFAULT_INSTRUMENT;
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
-    // Category & Parameter selection
-    uint8_t _selectedCategory   = 0;
-    uint8_t _selectedParam      = 0; // Index within filtered list
-    uint8_t _paramScrollTop     = 0;
-    uint8_t _filteredIndices[MAX_PARAMS];
-    uint8_t _filteredParamCount = 0;
+    // Parameter filtering per tab
+    uint8_t _selectedParam  = 0;
+    uint8_t _paramScrollTop = 0;
+    uint8_t _tabIndices[MAX_PARAMS];
+    uint8_t _tabParamCount  = 0;
 
-    void updateFilteredParams();
+    void updateTabParams();
 
     // Engine menu
     uint8_t _menuSelection = 0;
 
     // State machine handlers
     void handleEngineMenu();
-    void handlePatchSelect();
-    void handleCategorySelect();
+    void handleTabSelect();
+    void handlePatchBrowse();
     void handleParamSelect();
     void handleParamEdit();
 

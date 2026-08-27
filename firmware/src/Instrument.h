@@ -12,9 +12,6 @@ extern "C" {
 #include <amy.h>
 }
 
-// ---------------------------------------------------------------------------
-// SynthParams — standard synthesis & FX parameters with natural units
-// ---------------------------------------------------------------------------
 struct SynthParams {
     float cutoff         = 2000.0f; // 20 - 10000 Hz
     float resonance      = 1.0f;    // 0.5 - 5.0
@@ -40,7 +37,6 @@ public:
 
     virtual ~Instrument() {}
 
-    // --- Lifecycle ---
     virtual void init() {}
 
     virtual void start() {
@@ -54,10 +50,8 @@ public:
 
     virtual void update() {}
 
-    // --- Display ---
     virtual void drawUI(U8G2 &u8g2) {}
 
-    // --- Notes ---
     virtual void noteOn(uint8_t note, float velocity) {
         if (!isActive) return;
         amy_event e = amy_default_event();
@@ -76,11 +70,9 @@ public:
         amy_add_event(&e);
     }
 
-    // --- Identity ---
     const char *getName()      const { return _instrumentName; }
     const char *getShortName() const { return _instrumentShortName; }
 
-    // --- Parameters (for encoder UI) ---
     virtual const ParamDescriptor *getParams() const { return _baseParams; }
     virtual uint8_t getParamCount()            const { return _baseParamCount; }
 
@@ -88,7 +80,6 @@ public:
         sendAllParams();
     }
 
-    // --- Patch browsing ---
     virtual int  getPatchCount()              const { return 0; }
     virtual int  getCurrentPatch()            const { return 0; }
     virtual void setPatch(int index)                { }
@@ -97,7 +88,6 @@ public:
     virtual void nextPatch()     { setPatch(getCurrentPatch() + 1); }
     virtual void prevPatch()     { setPatch(getCurrentPatch() - 1); }
 
-    // --- Effects configuration ---
     virtual void configReverb() {
         float level = (params.reverb_pct / 100.0f) * 1.5f;
         float damping = params.reverb_damping / 100.0f;
@@ -147,27 +137,27 @@ protected:
         e.synth = getSynthChannel();
         e.filter_freq_coefs[0] = params.cutoff;
         e.resonance = params.resonance;
-        e.filter_type = 1;  // Lowpass
+        e.filter_type = 1;
         amy_add_event(&e);
     }
 
     void buildBaseParams() {
-        // Category: FILTER & ENV
-        _baseParams[0]  = PARAM_HZ("Cutoff",      20.0f, 10000.0f, 50.0f, &params.cutoff,       CAT_FILTER_ENV);
-        _baseParams[1]  = PARAM_FLOAT("Resonance","", 0.5f, 5.0f, 0.1f,   &params.resonance,    CAT_FILTER_ENV);
-        _baseParams[2]  = PARAM_MS("Attack",      1.0f, 4000.0f, 10.0f,   &params.attack_ms,    CAT_FILTER_ENV);
-        _baseParams[3]  = PARAM_MS("Decay",       5.0f, 4000.0f, 20.0f,   &params.decay_ms,     CAT_FILTER_ENV);
-        _baseParams[4]  = PARAM_PCT("Sustain",    0.0f, 100.0f, 5.0f,     &params.sustain_pct,  CAT_FILTER_ENV);
-        _baseParams[5]  = PARAM_MS("Release",     5.0f, 4000.0f, 20.0f,   &params.release_ms,   CAT_FILTER_ENV);
-        _baseParams[6]  = PARAM_HZ("LFO Rate",    0.1f, 20.0f, 0.2f,      &params.lfo_freq_hz,  CAT_FILTER_ENV);
-        _baseParams[7]  = PARAM_PCT("LFO Depth",  0.0f, 100.0f, 5.0f,     &params.lfo_depth_pct,CAT_FILTER_ENV);
+        // Tab: ENV (Filter & Envelope)
+        _baseParams[0]  = PARAM_HZ("Cutoff",      20.0f, 10000.0f, 50.0f, &params.cutoff,       TAB_ENV);
+        _baseParams[1]  = PARAM_FLOAT("Resonance","", 0.5f, 5.0f, 0.1f,   &params.resonance,    TAB_ENV);
+        _baseParams[2]  = PARAM_MS("Attack",      1.0f, 4000.0f, 10.0f,   &params.attack_ms,    TAB_ENV);
+        _baseParams[3]  = PARAM_MS("Decay",       5.0f, 4000.0f, 20.0f,   &params.decay_ms,     TAB_ENV);
+        _baseParams[4]  = PARAM_PCT("Sustain",    0.0f, 100.0f, 5.0f,     &params.sustain_pct,  TAB_ENV);
+        _baseParams[5]  = PARAM_MS("Release",     5.0f, 4000.0f, 20.0f,   &params.release_ms,   TAB_ENV);
+        _baseParams[6]  = PARAM_HZ("LFO Rate",    0.1f, 20.0f, 0.2f,      &params.lfo_freq_hz,  TAB_ENV);
+        _baseParams[7]  = PARAM_PCT("LFO Depth",  0.0f, 100.0f, 5.0f,     &params.lfo_depth_pct,TAB_ENV);
 
-        // Category: EFFECTS (FX)
-        _baseParams[8]  = PARAM_PCT("Reverb",     0.0f, 100.0f, 5.0f,     &params.reverb_pct,    CAT_FX);
-        _baseParams[9]  = PARAM_PCT("Rev Damp",   0.0f, 100.0f, 5.0f,     &params.reverb_damping,CAT_FX);
-        _baseParams[10] = PARAM_PCT("Delay Mix",  0.0f, 100.0f, 5.0f,     &params.delay_mix_pct, CAT_FX);
-        _baseParams[11] = PARAM_MS("Delay Time",  10.0f, 1500.0f, 25.0f,  &params.delay_time_ms, CAT_FX);
-        _baseParams[12] = PARAM_PCT("Delay FB",   0.0f, 95.0f, 5.0f,      &params.delay_feedback,CAT_FX);
+        // Tab: FX (Effects)
+        _baseParams[8]  = PARAM_PCT("Reverb",     0.0f, 100.0f, 5.0f,     &params.reverb_pct,    TAB_FX);
+        _baseParams[9]  = PARAM_PCT("Rev Damp",   0.0f, 100.0f, 5.0f,     &params.reverb_damping,TAB_FX);
+        _baseParams[10] = PARAM_PCT("Delay Mix",  0.0f, 100.0f, 5.0f,     &params.delay_mix_pct, TAB_FX);
+        _baseParams[11] = PARAM_MS("Delay Time",  10.0f, 1500.0f, 25.0f,  &params.delay_time_ms, TAB_FX);
+        _baseParams[12] = PARAM_PCT("Delay FB",   0.0f, 95.0f, 5.0f,      &params.delay_feedback,TAB_FX);
 
         _baseParamCount = 13;
     }

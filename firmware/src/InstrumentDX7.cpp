@@ -146,9 +146,9 @@ void InstrumentDX7::drawUI(U8G2 &u8g2) {
     u8g2.setDrawColor(1);
     char algoBuf[16];
     snprintf(algoBuf, sizeof(algoBuf), "ALGO %d", algoNum);
-    u8g2.drawStr(2, 26, algoBuf);
+    u8g2.drawStr(4, 38, algoBuf);
 
-    int base_y = 52;
+    int base_y = 70;
     draw_algo(u8g2, currentAlgo.top, currentAlgo.bottom, currentAlgo.carriers, base_y);
 }
 

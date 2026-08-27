@@ -1,16 +1,17 @@
 #pragma once
 // =============================================================================
-// ParamDefs.h — Self-describing parameter descriptors with category support
+// ParamDefs.h — Tabbed Parameter Descriptors
 // =============================================================================
 
 #include <Arduino.h>
 
-// Parameter categories for top-level menu navigation
-enum ParamCategory : uint8_t {
-    CAT_SYNTH      = 0, // Engine-specific controls (Waves, DCO, HPF, Trim, Gain)
-    CAT_FILTER_ENV = 1, // Cutoff, Resonance, Attack, Decay, Sustain, Release, LFO
-    CAT_FX         = 2, // Reverb, Delay Mix, Delay Time, Feedback
-    CAT_COUNT      = 3
+// Top-level tab IDs
+enum TabId : uint8_t {
+    TAB_MAIN  = 0, // Preset viewer + Instrument visualizer
+    TAB_SYNTH = 1, // Engine specific controls (DCO, Waves, Trim, Gain)
+    TAB_ENV   = 2, // Filter & Envelope (Cutoff, Res, ADSR, LFO)
+    TAB_FX    = 3, // Effects (Reverb, Delay)
+    TAB_COUNT = 4
 };
 
 struct ParamDescriptor {
@@ -22,7 +23,7 @@ struct ParamDescriptor {
     float coarseStep;       // Encoder increment when accelerating
     float *valuePtr;        // Pointer to the live value
     bool isInteger;         // If true, display and snap to integers
-    ParamCategory category; // Category for tabbed navigation
+    TabId tab;              // Associated Tab ID
 
     float getValue() const { return *valuePtr; }
 
@@ -49,18 +50,18 @@ struct ParamDescriptor {
     }
 };
 
-// Helper macros for standardized parameter definitions
-#define PARAM_MS(name, min, max, step, ptr, cat) \
-    { name, "ms", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, cat }
+// Helper macros for defining tabbed parameters
+#define PARAM_MS(name, min, max, step, ptr, tab) \
+    { name, "ms", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, tab }
 
-#define PARAM_HZ(name, min, max, step, ptr, cat) \
-    { name, "Hz", (float)(min), (float)(max), (float)(step), (float)(step) * 10.0f, ptr, ((step) >= 1.0f), cat }
+#define PARAM_HZ(name, min, max, step, ptr, tab) \
+    { name, "Hz", (float)(min), (float)(max), (float)(step), (float)(step) * 10.0f, ptr, ((step) >= 1.0f), tab }
 
-#define PARAM_PCT(name, min, max, step, ptr, cat) \
-    { name, "%", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, cat }
+#define PARAM_PCT(name, min, max, step, ptr, tab) \
+    { name, "%", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, tab }
 
-#define PARAM_FLOAT(name, unit, min, max, step, ptr, cat) \
-    { name, unit, min, max, step, (step) * 10.0f, ptr, false, cat }
+#define PARAM_FLOAT(name, unit, min, max, step, ptr, tab) \
+    { name, unit, min, max, step, (step) * 10.0f, ptr, false, tab }
 
-#define PARAM_INT(name, unit, min, max, ptr, cat) \
-    { name, unit, (float)(min), (float)(max), 1.0f, 10.0f, ptr, true, cat }
+#define PARAM_INT(name, unit, min, max, ptr, tab) \
+    { name, unit, (float)(min), (float)(max), 1.0f, 10.0f, ptr, true, tab }
