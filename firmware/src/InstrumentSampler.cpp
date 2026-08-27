@@ -4,7 +4,7 @@
 #include <cmath>
 
 InstrumentSampler::InstrumentSampler() {
-    _instrumentName = "SAMPLER";
+    _instrumentName = "Sampler";
     _instrumentShortName = "SMPL";
 }
 
@@ -21,15 +21,34 @@ void InstrumentSampler::init() {
         _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
     }
 
-    _amy_preset_num = pcm_samples;
+    _amy_preset_num = 1000;
+
+    // Pre-populate with a rich 1-second default acoustic tone (Middle C 261.63Hz)
+    if (_record_buffer) {
+        original_length = SAMPLER_SAMPLE_RATE;
+        sample_length = original_length;
+        _trim_start_samples = 0;
+        _trim_end_samples = original_length;
+
+        for (uint32_t i = 0; i < original_length; i++) {
+            float t = (float)i / (float)SAMPLER_SAMPLE_RATE;
+            float s = sinf(2.0f * M_PI * 261.63f * t) * 0.6f + sinf(2.0f * M_PI * 523.25f * t) * 0.3f;
+            _record_buffer[i] = (int16_t)(s * 24000.0f * expf(-t * 2.0f));
+        }
+
+        int16_t *amy_buf = pcm_load(_amy_preset_num, original_length, SAMPLER_SAMPLE_RATE, 1, 60, 0, 0);
+        if (amy_buf) {
+            memcpy(amy_buf, _record_buffer, original_length * sizeof(int16_t));
+        }
+    }
 
     buildBaseParams();
 
     // Tab: SYNTH
-    _samplerParams[0] = PARAM_INT("Record", "", 0, 1,         &_param_record,     TAB_SYNTH);
+    _samplerParams[0] = PARAM_INT("Record", "", 0, 1,           &_param_record,     TAB_SYNTH);
     _samplerParams[1] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, TAB_SYNTH);
     _samplerParams[2] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, TAB_SYNTH);
-    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain, TAB_SYNTH);
+    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain,     TAB_SYNTH);
 
     _samplerParamCount = 4;
     for (int i = 0; i < _baseParamCount; i++) {
