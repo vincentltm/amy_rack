@@ -2,10 +2,6 @@
 // =============================================================================
 // Config.h — AMY Rack central configuration
 // =============================================================================
-// All hardware constants, I2C addresses, pin mappings, and build-time feature
-// flags live here.  Every other source file should #include "Config.h" rather
-// than hard-coding magic numbers.
-// =============================================================================
 
 #include <Arduino.h>
 
@@ -17,7 +13,7 @@
 #define I2C_FREQ                400000  // 400 kHz
 
 // I2C device addresses
-#define DISPLAY_I2C_ADDR        0x3C    // SH1107 OLED (some boards use 0x3D)
+#define DISPLAY_I2C_ADDR        0x3C    // SH1107 OLED (or 0x3D)
 #define ENCODER_I2C_ADDR        0x36    // Adafruit seesaw rotary encoder
 #define CV_DAC_I2C_ADDR         0x58    // GP8413 15-bit DAC (CV outputs)
 
@@ -30,25 +26,25 @@
 // UI layout zones (y-coordinates, top-to-bottom)
 #define HEADER_Y                0
 #define HEADER_HEIGHT           14      // Instrument name + patch info
-#define INSTRUMENT_UI_Y         15      // Start of instrument-specific drawing
-#define INSTRUMENT_UI_H         63      // 63px for instrument visuals
-#define PARAM_LIST_Y            80      // Start of scrollable parameter list
-#define PARAM_LIST_H            38      // 4–5 visible parameters
+#define INSTRUMENT_UI_Y         16      // Start of instrument-specific visualizer
+#define INSTRUMENT_UI_H         58      // Height for instrument visuals
+#define PARAM_LIST_Y            77      // Start of scrollable parameter list
+#define PARAM_LIST_H            41      // Parameter list height
 #define PARAM_LIST_ROW_H        10      // Height per parameter row
 #define STATUS_BAR_Y            120     // Bottom status bar
-#define STATUS_BAR_H            8       // MIDI ch, last note, gate state
+#define STATUS_BAR_H            8       // Status text
 
 // Fonts (U8g2 font names)
-#define FONT_HEADER             u8g2_font_helvB10_tr
+#define FONT_HEADER             u8g2_font_7x14B_tr
 #define FONT_PARAM_NAME         u8g2_font_6x10_tr
 #define FONT_PARAM_VALUE        u8g2_font_6x10_tr
 #define FONT_STATUS             u8g2_font_5x7_tr
-#define FONT_INSTRUMENT_TITLE   u8g2_font_helvB12_tr
+#define FONT_INSTRUMENT_TITLE   u8g2_font_9x15B_tf
 
 // -----------------------------------------------------------------------------
 // Encoder — Adafruit I2C QT Rotary Encoder (seesaw)
 // -----------------------------------------------------------------------------
-#define ENCODER_LONG_PRESS_MS   800     // Hold duration for long-press
+#define ENCODER_LONG_PRESS_MS   350     // Snappy 350ms for long-press hierarchy back
 #define ENCODER_ACCEL_THRESHOLD 3       // Delta/poll to trigger acceleration
 #define ENCODER_ACCEL_FACTOR    4       // Multiplier when accelerating
 #define ENCODER_POLL_INTERVAL   20      // ms between encoder reads
@@ -61,7 +57,7 @@
 // CV — Control Voltage I/O
 // -----------------------------------------------------------------------------
 
-// CV Input (read via AMY's amy_external_coef_hook)
+// CV Input (read via AMY's hooks / ADC)
 #define CV_IN_CHANNELS          2
 #define CV_GATE_CHANNEL         0       // CV In 0 = Gate
 #define CV_VOCT_CHANNEL         1       // CV In 1 = V/Oct pitch
@@ -86,16 +82,16 @@
 #define GP8413_REG_CH1          0x04
 #define GP8413_REG_RANGE        0x01    // Output range config register
 #define GP8413_RANGE_10V        0x00    // 0–10V mode
-#define GP8413_RANGE_5V         0x01    // 0–5V mode (not used — we need bipolar)
 
 // -----------------------------------------------------------------------------
 // Instruments
 // -----------------------------------------------------------------------------
-#define NUM_INSTRUMENTS         4
+#define NUM_INSTRUMENTS         5
 #define INST_DX7                0
 #define INST_JUNO               1
 #define INST_ANALOG             2
-#define INST_PIANO              3
+#define INST_SAMPLER            3
+#define INST_PIANO              4
 #define DEFAULT_INSTRUMENT      INST_JUNO
 
 // Maximum parameters per instrument (for encoder UI)

@@ -1,25 +1,18 @@
-// =============================================================================
-// System.cpp — Navigation state machine and instrument management
-// =============================================================================
-
 #include "System.h"
 #include "Display.h"
 #include "EncoderInput.h"
 #include "CVManager.h"
 #include "MidiManager.h"
 
-// Include all instrument types
+// Include all 5 instrument types
 #include "InstrumentDX7.h"
 #include "InstrumentJuno.h"
 #include "InstrumentAnalog.h"
+#include "InstrumentSampler.h"
 #include "InstrumentPiano.h"
 
 // Global instance
 System Sys;
-
-// =============================================================================
-// Initialization
-// =============================================================================
 
 void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager &midi) {
     _display = &disp;
@@ -29,50 +22,77 @@ void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager 
 
     initInstruments();
     switchInstrument(DEFAULT_INSTRUMENT);
-    enterState(NavState::MAIN_SCREEN);
+    enterState(NavState::PATCH_SELECT);
 }
 
 void System::initInstruments() {
-    _instruments[INST_DX7]    = new InstrumentDX7();
-    _instruments[INST_JUNO]   = new InstrumentJuno();
-    _instruments[INST_ANALOG] = new InstrumentAnalog();
-    _instruments[INST_PIANO]  = new InstrumentPiano();
+    _instruments[INST_DX7]     = new InstrumentDX7();
+    _instruments[INST_JUNO]    = new InstrumentJuno();
+    _instruments[INST_ANALOG]  = new InstrumentAnalog();
+    _instruments[INST_SAMPLER] = new InstrumentSampler();
+    _instruments[INST_PIANO]   = new InstrumentPiano();
 
     for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
         _instruments[i]->init();
     }
 }
 
-// =============================================================================
-// Main update loop — called every frame from loop()
-// =============================================================================
-
 void System::update() {
     switch (_navState) {
-        case NavState::MAIN_SCREEN:     handleMainScreen();     break;
-        case NavState::PARAM_SELECT:    handleParamSelect();    break;
-        case NavState::PARAM_EDIT:      handleParamEdit();      break;
-        case NavState::INSTRUMENT_MENU: handleInstrumentMenu(); break;
+        case NavState::ENGINE_MENU:  handleEngineMenu();  break;
+        case NavState::PATCH_SELECT: handlePatchSelect(); break;
+        case NavState::PARAM_SELECT: handleParamSelect(); break;
+        case NavState::PARAM_EDIT:   handleParamEdit();   break;
     }
 
-    // Let the active instrument do any per-frame work
     Instrument *inst = getActiveInstrument();
     if (inst) inst->update();
 }
 
-// =============================================================================
-// State machine handlers
-// =============================================================================
-
-void System::handleMainScreen() {
-    // Long press → open instrument menu
-    if (_encoder->wasLongPressed()) {
-        _menuSelection = _currentInstrument;
-        enterState(NavState::INSTRUMENT_MENU);
+// -----------------------------------------------------------------------------
+// Level 0: ENGINE_MENU (Select synth engine)
+//   - Turn: scroll engines
+//   - Click: select engine -> go DOWN to Level 1 (PATCH_SELECT)
+//   - Long press: cancel -> go DOWN to Level 1 (PATCH_SELECT)
+// -----------------------------------------------------------------------------
+void System::handleEngineMenu() {
+    // Click -> Select engine and go DOWN to Level 1
+    if (_encoder->wasPressed()) {
+        switchInstrument(_menuSelection);
+        enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Short press → enter parameter selection
+    // Long press -> Cancel and return to Level 1
+    if (_encoder->wasLongPressed()) {
+        enterState(NavState::PATCH_SELECT);
+        return;
+    }
+
+    // Turn -> Scroll through engine choices
+    int delta = _encoder->getDelta();
+    if (delta != 0) {
+        int newSel = (int)_menuSelection + delta;
+        newSel = constrain(newSel, 0, NUM_INSTRUMENTS - 1);
+        _menuSelection = (uint8_t)newSel;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Level 1: PATCH_SELECT (Browse presets on main engine screen)
+//   - Turn: scroll presets (if available)
+//   - Click: go DOWN to Level 2 (PARAM_SELECT / settings)
+//   - Long press: go UP to Level 0 (ENGINE_MENU)
+// -----------------------------------------------------------------------------
+void System::handlePatchSelect() {
+    // Long press -> Go UP to Level 0 (ENGINE_MENU)
+    if (_encoder->wasLongPressed()) {
+        _menuSelection = _currentInstrument;
+        enterState(NavState::ENGINE_MENU);
+        return;
+    }
+
+    // Click -> Go DOWN to Level 2 (PARAM_SELECT)
     if (_encoder->wasPressed()) {
         _selectedParam = 0;
         _paramScrollTop = 0;
@@ -80,7 +100,7 @@ void System::handleMainScreen() {
         return;
     }
 
-    // Encoder turn on main screen → browse patches (if instrument has patches)
+    // Turn -> Cycle through preset patches
     int delta = _encoder->getDelta();
     if (delta != 0) {
         Instrument *inst = getActiveInstrument();
@@ -89,40 +109,49 @@ void System::handleMainScreen() {
             newPatch = constrain(newPatch, 0, inst->getPatchCount() - 1);
             inst->setPatch(newPatch);
             inst->needsUIRedraw = true;
+        } else if (inst && inst->getParamCount() > 0) {
+            // If no presets, turning directly scrolls to settings
+            _selectedParam = 0;
+            enterState(NavState::PARAM_SELECT);
         }
     }
 }
 
+// -----------------------------------------------------------------------------
+// Level 2: PARAM_SELECT (Browse settings list)
+//   - Turn: scroll settings
+//   - Click: go DOWN to Level 3 (PARAM_EDIT highlighted setting)
+//   - Long press: go UP to Level 1 (PATCH_SELECT)
+// -----------------------------------------------------------------------------
 void System::handleParamSelect() {
     Instrument *inst = getActiveInstrument();
     if (!inst) return;
 
     uint8_t paramCount = inst->getParamCount();
     if (paramCount == 0) {
-        enterState(NavState::MAIN_SCREEN);
+        enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Long press → back to main screen
+    // Long press -> Go UP to Level 1 (PATCH_SELECT)
     if (_encoder->wasLongPressed()) {
-        enterState(NavState::MAIN_SCREEN);
+        enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Short press → enter edit mode for selected param
+    // Click -> Go DOWN to Level 3 (PARAM_EDIT)
     if (_encoder->wasPressed()) {
         enterState(NavState::PARAM_EDIT);
         return;
     }
 
-    // Encoder turn → scroll through parameter list
+    // Turn -> Scroll through parameters
     int delta = _encoder->getDelta();
     if (delta != 0) {
         int newSel = (int)_selectedParam + delta;
         newSel = constrain(newSel, 0, (int)paramCount - 1);
         _selectedParam = (uint8_t)newSel;
 
-        // Keep selected param visible in the scroll window
         uint8_t visibleRows = PARAM_LIST_H / PARAM_LIST_ROW_H;
         if (_selectedParam < _paramScrollTop) {
             _paramScrollTop = _selectedParam;
@@ -132,6 +161,12 @@ void System::handleParamSelect() {
     }
 }
 
+// -----------------------------------------------------------------------------
+// Level 3: PARAM_EDIT (Adjust setting value)
+//   - Turn: tweak value in real time
+//   - Click: confirm and go UP to Level 2 (PARAM_SELECT)
+//   - Long press: confirm and go UP to Level 2 (PARAM_SELECT)
+// -----------------------------------------------------------------------------
 void System::handleParamEdit() {
     Instrument *inst = getActiveInstrument();
     if (!inst) return;
@@ -144,19 +179,13 @@ void System::handleParamEdit() {
         return;
     }
 
-    // Long press → cancel edit, back to param select
-    if (_encoder->wasLongPressed()) {
+    // Click or Long press -> Confirm & go UP to Level 2
+    if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
         enterState(NavState::PARAM_SELECT);
         return;
     }
 
-    // Short press → confirm edit, back to param select
-    if (_encoder->wasPressed()) {
-        enterState(NavState::PARAM_SELECT);
-        return;
-    }
-
-    // Encoder turn → adjust parameter value
+    // Turn -> Adjust parameter value
     int delta = _encoder->getDelta();
     if (delta != 0) {
         bool accel = (abs(delta) >= ENCODER_ACCEL_THRESHOLD);
@@ -166,61 +195,26 @@ void System::handleParamEdit() {
     }
 }
 
-void System::handleInstrumentMenu() {
-    // Short press → select and switch instrument
-    if (_encoder->wasPressed()) {
-        switchInstrument(_menuSelection);
-        enterState(NavState::MAIN_SCREEN);
-        return;
-    }
-
-    // Long press → cancel, back to main screen
-    if (_encoder->wasLongPressed()) {
-        enterState(NavState::MAIN_SCREEN);
-        return;
-    }
-
-    // Encoder turn → scroll through instruments
-    int delta = _encoder->getDelta();
-    if (delta != 0) {
-        int newSel = (int)_menuSelection + delta;
-        newSel = constrain(newSel, 0, NUM_INSTRUMENTS - 1);
-        _menuSelection = (uint8_t)newSel;
-    }
-}
-
-// =============================================================================
-// State transitions
-// =============================================================================
-
 void System::enterState(NavState newState) {
     _navState = newState;
-    // Force a display redraw on any state change
     Instrument *inst = getActiveInstrument();
     if (inst) inst->needsUIRedraw = true;
 }
 
-// =============================================================================
-// Instrument switching
-// =============================================================================
-
 void System::switchInstrument(uint8_t index) {
     if (index >= NUM_INSTRUMENTS) return;
 
-    // Stop current instrument
     if (_instruments[_currentInstrument]) {
         _instruments[_currentInstrument]->stop();
     }
 
     _currentInstrument = index;
 
-    // Start new instrument
     if (_instruments[_currentInstrument]) {
         _instruments[_currentInstrument]->start();
         _instruments[_currentInstrument]->needsUIRedraw = true;
     }
 
-    // Reset parameter selection
     _selectedParam = 0;
     _paramScrollTop = 0;
 }

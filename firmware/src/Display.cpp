@@ -34,7 +34,7 @@ void Display::update(System& sys, MidiManager& midi) {
     NavState state = sys.getNavState();
     uint8_t navStateInt = static_cast<uint8_t>(state);
 
-    if (state == NavState::INSTRUMENT_MENU) {
+    if (state == NavState::ENGINE_MENU) {
         uint8_t menuSel = sys.getMenuSelection();
         bool dirty = (navStateInt != lastNavState) || (menuSel != lastMenuSel) || needsRedraw;
         lastNavState = navStateInt;
@@ -99,7 +99,7 @@ void Display::update(System& sys) {
     NavState state = sys.getNavState();
     uint8_t navStateInt = static_cast<uint8_t>(state);
 
-    if (state == NavState::INSTRUMENT_MENU) {
+    if (state == NavState::ENGINE_MENU) {
         uint8_t menuSel = sys.getMenuSelection();
         bool dirty = (navStateInt != lastNavState) || (menuSel != lastMenuSel) || needsRedraw;
         lastNavState = navStateInt;
@@ -250,8 +250,8 @@ void Display::drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, u
     
     // State indicator on left
     const char* modeStr = "[PATCH]";
-    if (navState == 1) modeStr = "[PARAM]";
-    else if (navState == 2) modeStr = "[EDIT]";
+    if (navState == 2) modeStr = "[PARAM]";
+    else if (navState == 3) modeStr = "[EDIT]";
 
     char buf[36];
     if (lastNote != 255) {
@@ -269,24 +269,24 @@ void Display::drawInstrumentMenu(const char* names[], uint8_t count, uint8_t sel
     u8g2.clearBuffer();
     
     // Title
-    u8g2.setFont(u8g2_font_7x14B_tr);
+    u8g2.setFont(u8g2_font_6x10_tr);
     u8g2.setDrawColor(1);
     const char* title = "-- SELECT ENGINE --";
     int tw = u8g2.getStrWidth(title);
-    u8g2.drawStr((SCREEN_WIDTH - tw) / 2, 12, title);
-    u8g2.drawHLine(0, 15, SCREEN_WIDTH);
+    u8g2.drawStr((SCREEN_WIDTH - tw) / 2, 10, title);
+    u8g2.drawHLine(0, 13, SCREEN_WIDTH);
 
     // List of instruments
-    u8g2.setFont(u8g2_font_9x15B_tf);
+    u8g2.setFont(u8g2_font_7x14B_tr);
     for (uint8_t i = 0; i < count; i++) {
-        int y = 35 + i * 22;
+        int y = 28 + i * 19;
         if (i == selected) {
             u8g2.setDrawColor(1);
-            u8g2.drawBox(4, y - 13, SCREEN_WIDTH - 8, 18);
+            u8g2.drawBox(4, y - 12, SCREEN_WIDTH - 8, 16);
             u8g2.setDrawColor(0); // Inverted text
         } else {
             u8g2.setDrawColor(1);
-            u8g2.drawFrame(4, y - 13, SCREEN_WIDTH - 8, 18);
+            u8g2.drawFrame(4, y - 12, SCREEN_WIDTH - 8, 16);
         }
         
         int w = u8g2.getStrWidth(names[i]);
