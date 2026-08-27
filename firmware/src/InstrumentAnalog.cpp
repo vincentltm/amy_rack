@@ -192,10 +192,18 @@ void InstrumentAnalog::setupSynthVoices() {
     e.patch_number = 1024;
     amy_add_event(&e);
 
-    // 1. Osc 1 - with ADSR via EG0
+    e = amy_default_event();
+    e.patch_number = 1024;
+    e.oscs_per_voice = 4;
+    e.synth = getSynthChannel();
+    e.num_voices = (params.voice_mode > 0.5f) ? 1 : 6;
+    e.portamento_ms = (uint16_t)params.glide_ms;
+    amy_add_event(&e);
+
+    // Osc 1 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_1;
-    e.patch_number = 1024;
+    e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc1_wave_f;
     e.amp_coefs[COEF_CONST] = 0.5f;
     e.amp_coefs[COEF_VEL] = 1.0f;
@@ -204,10 +212,10 @@ void InstrumentAnalog::setupSynthVoices() {
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // 2. Osc 2 - with ADSR via EG0
+    // Osc 2 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_2;
-    e.patch_number = 1024;
+    e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc2_wave_f;
     e.amp_coefs[COEF_CONST] = 0.5f;
     e.amp_coefs[COEF_VEL] = 1.0f;
@@ -216,42 +224,31 @@ void InstrumentAnalog::setupSynthVoices() {
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // 3. Noise
+    // Noise
     e = amy_default_event();
     e.osc = OSC_NOISE;
-    e.patch_number = 1024;
+    e.synth = getSynthChannel();
     e.wave = NOISE;
-    float noiseAmp = (params.noise_pct / 100.0f) * 0.5f;
-    if (noiseAmp < 0.001f) {
-        e.amp_coefs[COEF_CONST] = 0.0001f;
-        e.amp_coefs[COEF_VEL] = 0.0f;
-        e.amp_coefs[COEF_EG0] = 0.0f;
-    } else {
-        e.amp_coefs[COEF_CONST] = noiseAmp;
-        e.amp_coefs[COEF_VEL] = 1.0f;
-        e.amp_coefs[COEF_EG0] = 1.0f;
-    }
+    e.amp_coefs[COEF_CONST] = (params.noise_pct / 100.0f) * 0.5f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    e.amp_coefs[COEF_EG0] = 1.0f;
     e.chained_osc = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    // 4. LFO Filter modulator
+    // LFO Filter modulator
     e = amy_default_event();
     e.osc = OSC_LFO_FILTER;
-    e.patch_number = 1024;
-    e.wave = TRIANGLE;
+    e.synth = getSynthChannel();
+    e.wave = SINE;
     e.freq_coefs[COEF_CONST] = params.lfo_freq_hz;
-    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f) * 1.5f;
+    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f);
     e.freq_coefs[COEF_NOTE] = 0;
     e.amp_coefs[COEF_NOTE] = 0;
     amy_add_event(&e);
 
-    // 5. Instantiate patch 1024 across synth voices
     e = amy_default_event();
-    e.patch_number = 1024;
-    e.oscs_per_voice = 4;
     e.synth = getSynthChannel();
-    e.num_voices = (params.voice_mode > 0.5f) ? 1 : 6;
-    e.portamento_ms = (uint16_t)params.glide_ms;
+    e.filter_freq_coefs[COEF_MOD] = 1.0f;
     amy_add_event(&e);
 
     updateOscDetune();
@@ -279,7 +276,7 @@ void InstrumentAnalog::sendAdsr() {
     e.eg0_times[2]  = r_ms;
     e.eg0_values[2] = 0.0f;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         e.osc = i;
         amy_add_event(&e);
     }
@@ -288,13 +285,10 @@ void InstrumentAnalog::sendAdsr() {
 void InstrumentAnalog::sendFilter() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
-    e.filter_freq_coefs[COEF_CONST] = params.cutoff;
+    e.filter_freq_coefs[0] = params.cutoff;
     e.resonance = params.resonance;
     e.filter_type = 1; // 24dB / octave lowpass
-    for (int i = 0; i < 3; i++) {
-        e.osc = i;
-        amy_add_event(&e);
-    }
+    amy_add_event(&e);
 }
 
 void InstrumentAnalog::updateOsc1Wave() {
@@ -344,16 +338,9 @@ void InstrumentAnalog::configNoise() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.osc = OSC_NOISE;
-    float noiseAmp = (params.noise_pct / 100.0f) * 0.5f;
-    if (noiseAmp < 0.001f) {
-        e.amp_coefs[COEF_CONST] = 0.0001f;
-        e.amp_coefs[COEF_VEL] = 0.0f;
-        e.amp_coefs[COEF_EG0] = 0.0f;
-    } else {
-        e.amp_coefs[COEF_CONST] = noiseAmp;
-        e.amp_coefs[COEF_VEL] = 1.0f;
-        e.amp_coefs[COEF_EG0] = 1.0f;
-    }
+    e.amp_coefs[COEF_CONST] = (params.noise_pct / 100.0f) * 0.5f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    e.amp_coefs[COEF_EG0] = 1.0f;
     amy_add_event(&e);
 }
 
@@ -362,6 +349,6 @@ void InstrumentAnalog::configLfo() {
     e.synth = getSynthChannel();
     e.osc = OSC_LFO_FILTER;
     e.freq_coefs[COEF_CONST] = params.lfo_freq_hz;
-    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f) * 1.5f;
+    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f);
     amy_add_event(&e);
 }

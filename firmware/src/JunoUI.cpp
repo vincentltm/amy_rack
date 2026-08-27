@@ -200,9 +200,9 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
 
     uint8_t maxSegmentWidth = (uint8_t)(envGraphWidth / 3.1f);
 
-    uint8_t attackWidth =  std::max((uint8_t)1, (uint8_t)((state.env_a_ms / 3000.0f) * maxSegmentWidth));
-    uint8_t decayWidth =   std::max((uint8_t)1, (uint8_t)((state.env_d_ms / 3000.0f) * maxSegmentWidth));
-    uint8_t releaseWidth = std::max((uint8_t)1, (uint8_t)((state.env_r_ms / 3000.0f) * maxSegmentWidth));
+    uint8_t attackWidth =  std::max((uint8_t)1, (uint8_t)(state.env_a * maxSegmentWidth));
+    uint8_t decayWidth =   std::max((uint8_t)1, (uint8_t)(state.env_d * maxSegmentWidth));
+    uint8_t releaseWidth = std::max((uint8_t)1, (uint8_t)(state.env_r * maxSegmentWidth));
     uint8_t sustainWidth = std::max((uint8_t)1, (uint8_t)(envGraphWidth - (attackWidth + decayWidth + releaseWidth)));
 
     uint8_t attackX = envGraphLeft;
@@ -210,7 +210,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t decayX = attackX + attackWidth;
     uint8_t decayY = envGraphTop;
     uint8_t sustainX = decayX + decayWidth;
-    uint8_t sustainY = envGraphTop + (uint8_t)((1.0f - (state.env_s_pct / 100.0f)) * envGraphHeight);
+    uint8_t sustainY = envGraphTop + (uint8_t)((1.0f - state.env_s) * envGraphHeight);
     uint8_t releaseStartX = sustainX + sustainWidth;
     uint8_t releaseStartY = sustainY;
     uint8_t endX = envGraphRight;
