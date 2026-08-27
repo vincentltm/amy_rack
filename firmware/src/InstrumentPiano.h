@@ -10,11 +10,8 @@ public:
     void stop() override;
     void drawUI(U8G2 &u8g2) override;
 
-    int getPatchCount() const override { return 5; }
-    int getCurrentPatch() const override { return _currentPatch; }
-    void setPatch(int index) override;
-    const char *getPatchName(int idx) const override;
-
-private:
-    int _currentPatch = 0;
+    int getPatchCount() const override { return 1; }
+    int getCurrentPatch() const override { return 0; }
+    void setPatch(int index) override {}
+    const char *getPatchName(int idx) const override { return "Grand Piano"; }
 };

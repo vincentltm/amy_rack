@@ -17,7 +17,8 @@ public:
     void update(System& sys);
 
     void drawHeader(const char* instName, const char* patchName, int patchIndex, uint8_t midiCh, uint8_t lastNote, bool gateActive);
-    void drawVisualizerArea(Instrument* inst, TabId activeTab);
+    void drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t lastNote, bool gateActive);
+    void drawMasterKeyboard(uint8_t lastNote, bool gateActive);
     void drawFilterEnvPlot(const SynthParams& p);
     void drawFXPlot(const SynthParams& p);
     void drawTabBar(TabId activeTab, bool tabFocus);

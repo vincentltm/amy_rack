@@ -18,6 +18,10 @@ static void cleanString(char* dest, const char* src, size_t maxLen) {
     }
 }
 
+static const char* noteNames[] = {
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+};
+
 static const char* tabLabels[TAB_COUNT] = {
     "MAIN",
     "SYNTH",
@@ -79,7 +83,7 @@ void Display::update(System& sys, MidiManager& midi) {
         drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch, midiCh, lastNote, gateActive);
 
         // 2. Always-On Top Visualizer (y=14..61)
-        drawVisualizerArea(inst, activeTab);
+        drawVisualizerArea(inst, activeTab, lastNote, gateActive);
 
         // 3. Middle Tab Bar (y=63..74)
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
@@ -107,7 +111,7 @@ void Display::update(System& sys) {
 
     if (inst) {
         drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch, 0, 255, false);
-        drawVisualizerArea(inst, activeTab);
+        drawVisualizerArea(inst, activeTab, 255, false);
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
 
         bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
@@ -161,8 +165,10 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
     u8g2.drawHLine(0, 12, SCREEN_WIDTH);
 }
 
-void Display::drawVisualizerArea(Instrument* inst, TabId activeTab) {
-    if (activeTab == TabId::TAB_MAIN || activeTab == TabId::TAB_SYNTH) {
+void Display::drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t lastNote, bool gateActive) {
+    if (activeTab == TabId::TAB_MAIN) {
+        drawMasterKeyboard(lastNote, gateActive);
+    } else if (activeTab == TabId::TAB_SYNTH) {
         if (inst) inst->drawUI(u8g2);
     } else if (activeTab == TabId::TAB_ENV) {
         if (inst) drawFilterEnvPlot(inst->params);
@@ -171,6 +177,82 @@ void Display::drawVisualizerArea(Instrument* inst, TabId activeTab) {
     }
     u8g2.setDrawColor(1);
     u8g2.drawHLine(0, 61, SCREEN_WIDTH);
+}
+
+// -----------------------------------------------------------------------------
+// Interactive Master Keyboard & MIDI Monitor on MAIN Tab
+// -----------------------------------------------------------------------------
+void Display::drawMasterKeyboard(uint8_t lastNote, bool gateActive) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+
+    if (lastNote != 255 && gateActive) {
+        int noteIdx = lastNote % 12;
+        int oct = (lastNote / 12) - 1;
+        float freq = 440.0f * powf(2.0f, ((float)lastNote - 69.0f) / 12.0f);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "NOTE: %s%d  (%.1f Hz)", noteNames[noteIdx], oct, freq);
+        u8g2.drawStr(8, 23, buf);
+    } else {
+        u8g2.drawStr(8, 23, "KEYBOARD & MIDI MONITOR");
+    }
+
+    // 14 White keys across x=8..120 (width 8px per key)
+    const int startX = 8;
+    const int startY = 26;
+    const int keyW = 8;
+    const int whiteKeyH = 32;
+    const int blackKeyH = 19;
+    const int blackKeyW = 5;
+
+    // Determine if an active key is within display range (C3..B4)
+    int activeWhiteKey = -1;
+    int activeBlackKey = -1;
+
+    if (gateActive && lastNote >= 48 && lastNote <= 72) {
+        int noteIn2Oct = lastNote - 48; // 0..24
+        // Mapping semitones to white/black keys
+        static const int whiteMap[25] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6, 7, -1, 8, -1, 9, 10, -1, 11, -1, 12, -1, 13, 14};
+        static const int blackMap[25] = {-1, 0, -1, 1, -1, -1, 2, -1, 3, -1, 4, -1, -1, 5, -1, 6, -1, -1, 7, -1, 8, -1, 9, -1, -1};
+
+        if (noteIn2Oct < 25) {
+            activeWhiteKey = whiteMap[noteIn2Oct];
+            activeBlackKey = blackMap[noteIn2Oct];
+        }
+    }
+
+    for (int i = 0; i < 14; i++) {
+        if (i == activeWhiteKey) {
+            u8g2.drawBox(startX + i * keyW, startY, keyW + 1, whiteKeyH);
+        } else {
+            u8g2.drawFrame(startX + i * keyW, startY, keyW + 1, whiteKeyH);
+        }
+    }
+
+    // Black keys offsets (pattern: 2, gap, 3, gap, 2, gap, 3)
+    const int blackKeyOffsets[] = {
+        1, 2,      // C#3, D#3
+        4, 5, 6,   // F#3, G#3, A#3
+        8, 9,      // C#4, D#4
+        11, 12, 13 // F#4, G#4, A#4
+    };
+
+    for (int i = 0; i < 10; i++) {
+        int k = blackKeyOffsets[i];
+        int bx = startX + k * keyW - (blackKeyW / 2);
+
+        if (i == activeBlackKey) {
+            // Active black key: draw highlighted with white dot
+            u8g2.setDrawColor(1);
+            u8g2.drawBox(bx, startY, blackKeyW, blackKeyH);
+            u8g2.setDrawColor(0);
+            u8g2.drawDisc(bx + blackKeyW / 2, startY + blackKeyH - 4, 1);
+            u8g2.setDrawColor(1);
+        } else {
+            u8g2.setDrawColor(1);
+            u8g2.drawBox(bx, startY, blackKeyW, blackKeyH);
+        }
+    }
 }
 
 void Display::drawFilterEnvPlot(const SynthParams& p) {
