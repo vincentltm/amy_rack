@@ -57,10 +57,14 @@ void Display::update(System& sys, MidiManager& midi) {
     uint8_t midiCh = midi.getChannel();
     uint8_t lastNote = midi.getLastNote();
     bool gateActive = midi.isNoteActive();
+    float currentVal = 0.0f;
+    const ParamDescriptor* pDesc = sys.getTabParamDescriptor(selectedIdx);
+    if (pDesc && pDesc->valuePtr) currentVal = *(pDesc->valuePtr);
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
 
     bool dirty = (inst != lastInst) || (activeTab != lastTab) ||
                  (selectedIdx != lastSelectedIdx) || (editing != lastEditing) ||
+                 (currentVal != lastParamVal) ||
                  (midiCh != lastMidiCh) || (lastNote != this->lastNote) || 
                  (gateActive != lastGateActive) || (currentPatch != lastPatch) || 
                  (inst && inst->needsUIRedraw) || needsRedraw;
@@ -71,6 +75,7 @@ void Display::update(System& sys, MidiManager& midi) {
     lastTab = activeTab;
     lastSelectedIdx = selectedIdx;
     lastEditing = editing;
+    lastParamVal = currentVal;
     lastMidiCh = midiCh;
     this->lastNote = lastNote;
     lastGateActive = gateActive;
@@ -518,25 +523,23 @@ void Display::drawParamList(System& sys, uint8_t count, uint8_t selectedIdx, boo
             u8g2.setDrawColor(1);
         }
         
+        char nameBuf[24];
         if (isSelected && editing) {
-            char nameWithIndicator[32];
-            snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", param->name);
-            u8g2.drawStr(2, y + 8, nameWithIndicator);
+            snprintf(nameBuf, sizeof(nameBuf), ">%s", param->name);
         } else {
-            u8g2.drawStr(2, y + 8, param->name);
+            snprintf(nameBuf, sizeof(nameBuf), "%s", param->name);
         }
+        u8g2.drawStr(2, y + 8, nameBuf);
         
         char valBuf[32];
-        if (strcmp(param->name, "Patch") == 0 && sys.getActiveInstrument()) {
-            int pIdx = (int)roundf(*param->valuePtr);
-            const char* pName = sys.getActiveInstrument()->getPatchName(pIdx);
-            if (pName && pName[0] != '\0') {
-                snprintf(valBuf, sizeof(valBuf), "%02d:%s", pIdx, pName);
-            } else {
-                snprintf(valBuf, sizeof(valBuf), "P:%03d", pIdx);
-            }
-        } else {
-            param->formatValue(valBuf, sizeof(valBuf));
+        param->formatValue(valBuf, sizeof(valBuf));
+        
+        int nameW = u8g2.getStrWidth(nameBuf);
+        int maxValW = SCREEN_WIDTH - nameW - 8;
+        if (maxValW < 10) maxValW = 10;
+
+        while (valBuf[0] && u8g2.getStrWidth(valBuf) > maxValW) {
+            valBuf[strlen(valBuf) - 1] = '\0';
         }
         
         int w = u8g2.getStrWidth(valBuf);

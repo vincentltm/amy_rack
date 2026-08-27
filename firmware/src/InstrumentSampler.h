@@ -49,6 +49,7 @@ private:
 
     // Parameters
     float _param_record = 0.0f;     // 0 = idle, 1 = record
+    float _param_in_vol = 85.0f;    // 0 - 100% incoming monitor volume
     float _param_gain = 2.5f;       // 0.1x to 7.0x
     float _param_trim_start = 0.0f; // 0.0 to 0.9
     float _param_trim_end = 100.0f; // 10.0 to 100.0

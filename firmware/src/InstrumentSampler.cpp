@@ -1,30 +1,29 @@
 #include "InstrumentSampler.h"
-#include <esp_heap_caps.h>
-#include <algorithm>
+#include "amy.h"
 #include <cmath>
+#include <algorithm>
 
-static const char* samplerPatchNames[12] = {
-    "808 Kick",
-    "808 Snare",
+static const char *pcmSampleNames[12] = {
+    "808 Bass Drum",
+    "808 Snare Drum",
     "808 Closed Hat",
     "808 Open Hat",
-    "808 Hand Clap",
+    "808 Clap",
     "808 Low Tom",
+    "808 Mid Tom",
+    "808 High Tom",
     "808 Cowbell",
     "808 Maraca",
-    "808 Snare Hi",
-    "808 Snare Fat",
-    "808 Snare Tight",
+    "808 Clave",
     "Live Recorder"
 };
 
-static const uint16_t romPresetMap[11] = {
-    1, 2, 6, 7, 9, 8, 10, 0, 3, 4, 5
-};
-
 InstrumentSampler::InstrumentSampler() {
-    _instrumentName = "Sampler";
-    _instrumentShortName = "SMPL";
+    _currentPatch = 0;
+    _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
+    if (_record_buffer) {
+        memset(_record_buffer, 0, SAMPLER_MAX_SAMPLES * sizeof(int16_t));
+    }
 }
 
 InstrumentSampler::~InstrumentSampler() {
@@ -40,11 +39,12 @@ void InstrumentSampler::init() {
 
     // Tab: SYNTH
     _samplerParams[0] = PARAM_INT("Record", "", 0, 1,           &_param_record,     TAB_SYNTH);
-    _samplerParams[1] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, TAB_SYNTH);
-    _samplerParams[2] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, TAB_SYNTH);
-    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain,     TAB_SYNTH);
+    _samplerParams[1] = PARAM_PCT("In Volume",  0.0f, 100.0f, 1.0f, &_param_in_vol,    TAB_SYNTH);
+    _samplerParams[2] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, TAB_SYNTH);
+    _samplerParams[3] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, TAB_SYNTH);
+    _samplerParams[4] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain,     TAB_SYNTH);
 
-    _samplerParamCount = 4;
+    _samplerParamCount = 5;
     for (int i = 0; i < _baseParamCount; i++) {
         _samplerParams[_samplerParamCount++] = _baseParams[i];
     }
@@ -73,35 +73,40 @@ void InstrumentSampler::setPatch(int index) {
     if (index < 0) index = 11;
     if (index > 11) index = 0;
     _currentPatch = index;
-    setupSynthVoices();
+
+    if (_currentPatch < 11) {
+        _amy_preset_num = _currentPatch + 1; // 1 to 11 are 808 ROM samples
+        setupSynthVoices();
+    } else {
+        _amy_preset_num = 11; // User recorded RAM slot
+        if (_record_buffer && original_length > 0) {
+            reloadTrimmedSample();
+        } else {
+            setupSynthVoices();
+        }
+    }
     needsUIRedraw = true;
 }
 
 const char *InstrumentSampler::getPatchName(int idx) const {
-    if (idx >= 0 && idx < 12) return samplerPatchNames[idx];
-    return "";
-}
-
-void InstrumentSampler::update() {
-    if (recordingFinished && !isRecording) {
-        recordingFinished = false;
-        finishRecording();
+    if (idx >= 0 && idx < 12) {
+        return pcmSampleNames[idx];
     }
+    return "Unknown";
 }
 
 void InstrumentSampler::noteOn(uint8_t note, float velocity) {
-    if (!isActive || isRecording) return;
-    if (_currentPatch == 11 && sample_length == 0) return;
+    if (!isActive) return;
 
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.midi_note = note;
-    e.velocity = velocity * _param_gain;
+    e.velocity = velocity;
     amy_add_event(&e);
 }
 
 void InstrumentSampler::noteOff(uint8_t note) {
-    if (!isActive || isRecording) return;
+    if (!isActive) return;
 
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
@@ -110,73 +115,63 @@ void InstrumentSampler::noteOff(uint8_t note) {
     amy_add_event(&e);
 }
 
-void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
-    if (paramIndex == 0) { // Record toggle
-        if (_param_record >= 0.5f && !isRecording) {
-            startRecording();
-        } else if (_param_record < 0.5f && isRecording) {
-            stopRecording();
-        }
-    } else if (paramIndex == 1 || paramIndex == 2) { // Trim Start / End
-        if (original_length > 0) {
-            reloadTrimmedSample();
-        }
-    } else if (paramIndex == 3) { // Gain
-        // Applied in noteOn
-    } else if (paramIndex >= 12) {
-        configChorus();
-        configReverb();
-        configDelay();
-    }
-
-    needsUIRedraw = true;
-}
-
 void InstrumentSampler::startRecording() {
-    if (isRecording) return;
+    if (isRecording || !_record_buffer) return;
 
-    if (!_record_buffer) {
-        _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
-        if (!_record_buffer) {
-            _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
-        }
-    }
-    if (!_record_buffer) return;
-
-    _currentPatch = 11; // Switch to User Live Recorder
     isRecording = true;
-    _param_record = 1.0f;
-    sample_index = 0;
     recordingFinished = false;
-    sample_length = 0;
+    sample_index = 0;
+    _param_record = 1.0f;
 
     xTaskCreatePinnedToCore(
         recordingTaskWrapper,
         "SamplerRec",
         4096,
         this,
-        10,
+        1,
         &_recordingTaskHandle,
         0
     );
+
+    needsUIRedraw = true;
 }
 
 void InstrumentSampler::stopRecording() {
+    if (!isRecording) return;
     isRecording = false;
-    _param_record = 0.0f;
+}
+
+void InstrumentSampler::update() {
+    if (recordingFinished) {
+        recordingFinished = false;
+        finishRecording();
+    }
 }
 
 void InstrumentSampler::recordingTaskWrapper(void *arg) {
     InstrumentSampler *self = (InstrumentSampler *)arg;
+    
+    // Simulate live audio capture stream into buffer
+    float phase = 0.0f;
+    float freq = 220.0f * 6.28318530718f / (float)SAMPLER_SAMPLE_RATE;
 
     while (self->isRecording && self->sample_index < SAMPLER_MAX_SAMPLES) {
-        float t = (float)self->sample_index / (float)SAMPLER_SAMPLE_RATE;
-        int16_t sample = (int16_t)(sinf(2.0f * M_PI * 220.0f * t) * 16000.0f * expf(-t * 1.5f));
-
-        if (self->_record_buffer) {
-            self->_record_buffer[self->sample_index++] = sample;
+        int chunk_size = 128;
+        if (self->sample_index + chunk_size > SAMPLER_MAX_SAMPLES) {
+            chunk_size = SAMPLER_MAX_SAMPLES - self->sample_index;
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+
+        for (int i = 0; i < chunk_size; i++) {
+            float env = 1.0f - ((float)(self->sample_index + i) / (float)SAMPLER_MAX_SAMPLES);
+            float s = sinf(phase) * env * 24000.0f;
+            phase += freq;
+            if (phase > 6.28318530718f) phase -= 6.28318530718f;
+
+            self->_record_buffer[self->sample_index + i] = (int16_t)s;
+        }
+
+        self->sample_index += chunk_size;
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     self->sample_length = self->sample_index;
@@ -218,25 +213,26 @@ void InstrumentSampler::reloadTrimmedSample() {
         _amy_preset_num,
         trimmed_len,
         SAMPLER_SAMPLE_RATE,
-        1,
-        60,
-        0, 0
+        60, // Middle C
+        0,  // Loop start
+        0,  // Loop end
+        0   // 0 = one-shot
     );
 
     if (amy_buf) {
-        memcpy(amy_buf, _record_buffer + _trim_start_samples, trimmed_len * sizeof(int16_t));
-        sample_length = trimmed_len;
-        setupSynthVoices();
+        for (uint32_t i = 0; i < trimmed_len; i++) {
+            float val = (float)_record_buffer[_trim_start_samples + i] * _param_gain;
+            if (val > 32767.0f) val = 32767.0f;
+            if (val < -32768.0f) val = -32768.0f;
+            amy_buf[i] = (int16_t)val;
+        }
     }
+
+    setupSynthVoices();
 }
 
 void InstrumentSampler::setupSynthVoices() {
-    uint16_t presetNum = 1; // 808 Kick
-    if (_currentPatch == 11) {
-        presetNum = 11; // User preset
-    } else if (_currentPatch >= 0 && _currentPatch < 11) {
-        presetNum = romPresetMap[_currentPatch];
-    }
+    uint16_t presetNum = (_currentPatch == 11) ? 11 : (_currentPatch + 1);
 
     amy_event e = amy_default_event();
     e.reset_osc = RESET_PATCH;
@@ -253,7 +249,7 @@ void InstrumentSampler::setupSynthVoices() {
     e.amp_coefs[COEF_VEL] = 1.0f;
     amy_add_event(&e);
 
-    // 2. Instantiate on synth channel 3
+    // 2. Instantiate on synth channel 1
     e = amy_default_event();
     e.synth = getSynthChannel();
     e.patch_number = 1024;
@@ -278,66 +274,33 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         u8g2.setFont(u8g2_font_7x14B_tr);
         u8g2.drawStr(12, 32, "* RECORDING... *");
 
-        int progress = (sample_index * 104) / SAMPLER_MAX_SAMPLES;
-        if (progress > 104) progress = 104;
-        u8g2.drawFrame(12, 38, 104, 8);
-        u8g2.drawBox(14, 40, progress, 4);
-
-        char buf[20];
-        snprintf(buf, sizeof(buf), "%.1f / 3.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
-        u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(12, 56, buf);
+        int progW = (int)(((float)sample_index / SAMPLER_MAX_SAMPLES) * (BOX_W - 12));
+        u8g2.drawFrame(BOX_X + 6, BOX_Y + 24, BOX_W - 12, 8);
+        if (progW > 0) {
+            u8g2.drawBox(BOX_X + 6, BOX_Y + 24, progW, 8);
+        }
     } else if (_currentPatch < 11) {
-        // Draw Clean ROM Drum Waveform Graphic
+        // Built-in ROM Sample Stylized Preview
         u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
         u8g2.drawHLine(BOX_X + 2, MID_Y, BOX_W - 4);
 
-        int wave_cols = BOX_W - 8;
-        for (int x = 0; x < wave_cols; x++) {
-            float progress = (float)x / (float)wave_cols;
-            float amp = 0.0f;
-
-            switch (_currentPatch) {
-                case 0: // 808 Kick: Heavy transient, pitch drop, sub decay
-                    amp = sinf(progress * 18.0f * (1.0f - progress * 0.7f)) * expf(-progress * 4.5f);
-                    break;
-                case 1: case 8: case 9: case 10: // Snares: Noise burst + tone body
-                    amp = (((((x * 73 + 17) % 100) - 50) / 50.0f) * 0.7f + sinf(progress * 40.0f) * 0.3f) * expf(-progress * 5.0f);
-                    break;
-                case 2: // Closed Hat: Fast metallic spike
-                    amp = ((((x * 97 + 13) % 100) - 50) / 50.0f) * expf(-progress * 16.0f);
-                    break;
-                case 3: // Open Hat: Shimmer decay
-                    amp = ((((x * 97 + 13) % 100) - 50) / 50.0f) * expf(-progress * 2.8f);
-                    break;
-                case 4: // Hand Clap: Triple burst
-                    if (progress < 0.15f) amp = sinf(progress * 80.0f) * 0.6f;
-                    else if (progress < 0.30f) amp = sinf(progress * 80.0f) * 0.8f;
-                    else amp = ((((x * 83 + 7) % 100) - 50) / 50.0f) * expf(-(progress - 0.3f) * 4.0f);
-                    break;
-                case 5: // Low Tom
-                    amp = sinf(progress * 22.0f) * expf(-progress * 3.5f);
-                    break;
-                case 6: // Cowbell: Dual metallic pulse
-                    amp = (sinf(progress * 35.0f) * 0.6f + sinf(progress * 53.0f) * 0.4f) * expf(-progress * 3.2f);
-                    break;
-                case 7: // Maraca: Soft burst
-                    amp = ((((x * 61 + 3) % 100) - 50) / 50.0f) * expf(-progress * 8.0f);
-                    break;
-                default:
-                    amp = sinf(progress * 20.0f) * expf(-progress * 4.0f);
-                    break;
-            }
-
-            int bar_h = (int)(fabsf(amp) * (BOX_H / 2 - 5));
+        int dots = 40;
+        int step = (BOX_W - 8) / dots;
+        for (int i = 0; i < dots; i++) {
+            float t = (float)i / (float)dots;
+            float decay = expf(-t * 4.0f);
+            float freqMult = 1.0f + (11 - _currentPatch) * 0.4f;
+            float s = sinf(t * 30.0f * freqMult) * decay;
+            int bar_h = (int)(fabsf(s) * (BOX_H / 2 - 4));
             if (bar_h > 0) {
-                u8g2.drawVLine(BOX_X + 4 + x, MID_Y - bar_h, bar_h * 2 + 1);
+                int px = BOX_X + 4 + i * step;
+                u8g2.drawVLine(px, MID_Y - bar_h, bar_h * 2 + 1);
             }
         }
 
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(BOX_X + 6, BOX_Y + 9, samplerPatchNames[_currentPatch]);
-        u8g2.drawStr(BOX_X + BOX_W - 32, BOX_Y + 9, "ROM 808");
+        u8g2.drawStr(BOX_X + 4, BOX_Y + 9, pcmSampleNames[_currentPatch]);
+        u8g2.drawStr(BOX_X + BOX_W - 36, BOX_Y + 9, "ROM PCM");
     } else {
         // User Live Recorded Audio Waveform Preview
         u8g2.drawRFrame(BOX_X, BOX_Y, BOX_W, BOX_H, 3);
@@ -379,5 +342,34 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
             u8g2.setFont(u8g2_font_5x7_tr);
             u8g2.drawStr(12, 48, "Toggle 'Record' on SYNTH tab");
         }
+    }
+}
+
+void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
+    if (paramIndex == 0) { // Record toggle
+        if (_param_record > 0.5f && !isRecording) {
+            startRecording();
+        } else if (_param_record <= 0.5f && isRecording) {
+            stopRecording();
+        }
+    } else if (paramIndex == 1) { // In Volume
+        amy_event e = amy_default_event();
+        e.osc = 60;
+        e.wave = AUDIO_IN0;
+        float vol = _param_in_vol / 100.0f;
+        e.amp_coefs[COEF_CONST] = vol;
+        e.velocity = (vol > 0.001f) ? 1.0f : 0.0f;
+        amy_add_event(&e);
+    } else if (paramIndex == 2 || paramIndex == 3) { // Trim
+        if (!isRecording && _record_buffer && original_length > 0) {
+            reloadTrimmedSample();
+            needsUIRedraw = true;
+        }
+    } else if (paramIndex == 4) { // Gain
+        if (!isRecording && _record_buffer && original_length > 0) {
+            reloadTrimmedSample();
+        }
+    } else {
+        Instrument::onParamChanged(paramIndex - 5);
     }
 }

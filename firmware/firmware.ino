@@ -62,6 +62,7 @@ void setup() {
     amy_config_t amy_config = amy_default_config();
     amy_config.features.startup_bleep = 1;
     amy_config.features.default_synths = 1;   // Juno on ch1, DX7 on ch2, drums on ch10
+    amy_config.features.audio_in = 1;         // Enable live stereo Audio In via PCM9211 ADC
 
     // Install MIDI input hook so MidiManager can intercept messages for CV out
     midiManager.installMidiHook(amy_config);

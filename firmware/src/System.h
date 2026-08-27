@@ -40,6 +40,7 @@ public:
 
     void switchInstrument(uint8_t index);
     void updateDrumEngine();
+    void updateAudioIn();
 
 private:
     Display      *_display  = nullptr;
@@ -60,6 +61,7 @@ private:
     float _param_synth_vol     = 85.0f; // 0 - 100%
     float _param_drum_kit      = 0.0f;  // 0..8
     float _param_drum_vol      = 85.0f; // 0 - 100%
+    float _param_audio_in_vol  = 0.0f;  // 0 - 100% (live audio in monitor / FX pass-through)
     float _param_voice_mode    = 0.0f;  // 0 = Poly, 1 = Mono Legato
     float _param_glide         = 0.0f;  // 0 - 500 ms
     float _param_kick_tune     = 0.0f;  // -12 to +12 semitones

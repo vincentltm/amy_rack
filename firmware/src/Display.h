@@ -15,6 +15,7 @@ public:
     
     void update(System& sys, MidiManager& midi);
     void update(System& sys);
+    void markDirty() { needsRedraw = true; }
 
     void drawHeader(const char* instName, const char* patchName, int patchIndex, uint8_t midiCh, uint8_t lastNote, bool gateActive);
     void drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t lastNote, bool gateActive);
@@ -36,6 +37,7 @@ private:
     uint8_t lastSelectedIdx = 255;
     TabId lastTab = (TabId)255;
     bool lastEditing = false;
+    float lastParamVal = -99999.0f;
     uint8_t lastMidiCh = 255;
     uint8_t lastNote = 255;
     bool lastGateActive = false;
