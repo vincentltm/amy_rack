@@ -16,6 +16,7 @@ InstrumentSampler::~InstrumentSampler() {
 }
 
 void InstrumentSampler::init() {
+    // Allocate 3.0-second buffer in PSRAM (or heap fallback)
     _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
     if (!_record_buffer) {
         _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
@@ -23,17 +24,16 @@ void InstrumentSampler::init() {
 
     _amy_preset_num = 1000;
 
-    // Pre-populate with a rich 1-second default acoustic tone (Middle C 261.63Hz)
     if (_record_buffer) {
-        original_length = SAMPLER_SAMPLE_RATE;
+        original_length = SAMPLER_SAMPLE_RATE; // 1 second default tone
         sample_length = original_length;
         _trim_start_samples = 0;
         _trim_end_samples = original_length;
 
         for (uint32_t i = 0; i < original_length; i++) {
             float t = (float)i / (float)SAMPLER_SAMPLE_RATE;
-            float s = sinf(2.0f * M_PI * 261.63f * t) * 0.6f + sinf(2.0f * M_PI * 523.25f * t) * 0.3f;
-            _record_buffer[i] = (int16_t)(s * 24000.0f * expf(-t * 2.0f));
+            float s = sinf(2.0f * M_PI * 261.63f * t) * 0.7f + sinf(2.0f * M_PI * 523.25f * t) * 0.3f;
+            _record_buffer[i] = (int16_t)(s * 20000.0f * expf(-t * 2.5f));
         }
 
         int16_t *amy_buf = pcm_load(_amy_preset_num, original_length, SAMPLER_SAMPLE_RATE, 1, 60, 0, 0);
@@ -161,7 +161,9 @@ void InstrumentSampler::recordingTaskWrapper(void *arg) {
         float t = (float)self->sample_index / (float)SAMPLER_SAMPLE_RATE;
         int16_t sample = (int16_t)(sinf(2.0f * M_PI * 220.0f * t) * 16000.0f * expf(-t * 1.5f));
 
-        self->_record_buffer[self->sample_index++] = sample;
+        if (self->_record_buffer) {
+            self->_record_buffer[self->sample_index++] = sample;
+        }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 
@@ -174,7 +176,7 @@ void InstrumentSampler::recordingTaskWrapper(void *arg) {
 }
 
 void InstrumentSampler::finishRecording() {
-    if (sample_length == 0) return;
+    if (sample_length == 0 || !_record_buffer) return;
 
     original_length = sample_length;
     _trim_start_samples = (uint32_t)((_param_trim_start / 100.0f) * (float)original_length);
@@ -191,8 +193,8 @@ void InstrumentSampler::reloadTrimmedSample() {
     _trim_start_samples = (uint32_t)((_param_trim_start / 100.0f) * 0.9f * (float)original_length);
     _trim_end_samples = (uint32_t)((0.1f + (_param_trim_end / 100.0f) * 0.9f) * (float)original_length);
 
-    if (_trim_end_samples <= _trim_start_samples + 441) {
-        _trim_end_samples = std::min(_trim_start_samples + 441, original_length);
+    if (_trim_end_samples <= _trim_start_samples + 220) {
+        _trim_end_samples = std::min(_trim_start_samples + 220, original_length);
     }
     if (_trim_end_samples > original_length) _trim_end_samples = original_length;
 
@@ -216,14 +218,8 @@ void InstrumentSampler::reloadTrimmedSample() {
 
 void InstrumentSampler::setupSynthVoices() {
     amy_event e = amy_default_event();
-    e.reset_osc = RESET_PATCH;
-    e.patch_number = 1025;
-    amy_add_event(&e);
-
-    e = amy_default_event();
     e.synth = getSynthChannel();
     e.num_voices = 6;
-    e.patch_number = 1025;
     e.wave = PCM;
     e.preset = _amy_preset_num;
     e.amp_coefs[0] = _param_gain;
@@ -243,10 +239,10 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         u8g2.drawBox(10, 38, progress, 6);
 
         char buf[16];
-        snprintf(buf, sizeof(buf), "%.1f / 5.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
+        snprintf(buf, sizeof(buf), "%.1f / 3.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
         u8g2.setFont(u8g2_font_5x7_tr);
         u8g2.drawStr(10, 56, buf);
-    } else if (original_length == 0) {
+    } else if (original_length == 0 || !_record_buffer) {
         u8g2.setFont(u8g2_font_6x10_tr);
         u8g2.setDrawColor(1);
         u8g2.drawStr(10, 32, "No Sample Loaded");
