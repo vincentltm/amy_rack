@@ -35,31 +35,7 @@ InstrumentSampler::~InstrumentSampler() {
 }
 
 void InstrumentSampler::init() {
-    _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
-    if (!_record_buffer) {
-        _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
-    }
-
     _amy_user_preset = 1000;
-
-    if (_record_buffer) {
-        original_length = SAMPLER_SAMPLE_RATE;
-        sample_length = original_length;
-        _trim_start_samples = 0;
-        _trim_end_samples = original_length;
-
-        for (uint32_t i = 0; i < original_length; i++) {
-            float t = (float)i / (float)SAMPLER_SAMPLE_RATE;
-            float s = sinf(2.0f * M_PI * 261.63f * t) * 0.7f + sinf(2.0f * M_PI * 523.25f * t) * 0.3f;
-            _record_buffer[i] = (int16_t)(s * 20000.0f * expf(-t * 2.5f));
-        }
-
-        int16_t *amy_buf = pcm_load(_amy_user_preset, original_length, SAMPLER_SAMPLE_RATE, 1, 60, 0, 0);
-        if (amy_buf) {
-            memcpy(amy_buf, _record_buffer, original_length * sizeof(int16_t));
-        }
-    }
-
     buildBaseParams();
 
     // Tab: SYNTH
@@ -156,7 +132,15 @@ void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
 }
 
 void InstrumentSampler::startRecording() {
-    if (isRecording || !_record_buffer) return;
+    if (isRecording) return;
+
+    if (!_record_buffer) {
+        _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+        if (!_record_buffer) {
+            _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
+        }
+    }
+    if (!_record_buffer) return;
 
     _currentPatch = 11; // Switch to User Live Recorder
     isRecording = true;
@@ -262,11 +246,10 @@ void InstrumentSampler::setupSynthVoices() {
     amy_add_event(&e);
 
     char patchStr[32];
-    snprintf(patchStr, sizeof(patchStr), "v0w7p%d", presetNum);
+    snprintf(patchStr, sizeof(patchStr), "v0w7p%dZ", presetNum);
     e = amy_default_event();
     e.patch_number = 1025;
     patches_store_patch(&e, patchStr);
-    amy_add_event(&e);
 
     e = amy_default_event();
     e.synth = getSynthChannel();
@@ -278,9 +261,11 @@ void InstrumentSampler::setupSynthVoices() {
 }
 
 void InstrumentSampler::drawUI(U8G2 &u8g2) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+
     if (isRecording) {
         u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.setDrawColor(1);
         u8g2.drawStr(10, 30, "[ RECORDING... ]");
 
         int progress = (sample_index * 112) / SAMPLER_MAX_SAMPLES;
@@ -293,55 +278,27 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         u8g2.drawStr(10, 56, buf);
     } else if (_currentPatch < 11) {
         u8g2.setFont(u8g2_font_7x14B_tr);
-        u8g2.setDrawColor(1);
         u8g2.drawStr(8, 28, "ROM PCM SAMPLE");
 
         u8g2.setFont(u8g2_font_6x10_tr);
         u8g2.drawStr(8, 44, samplerPatchNames[_currentPatch]);
 
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(8, 56, "Polyphonic 6-Voice Sample");
+        u8g2.drawStr(8, 56, "808 Drum & Percussion Kit");
     } else {
-        const int WAVE_X = 4;
-        const int WAVE_Y = 16;
-        const int WAVE_W = 120;
-        const int WAVE_H = 34;
-        const int WAVE_CENTER = WAVE_Y + WAVE_H / 2;
+        u8g2.setFont(u8g2_font_7x14B_tr);
+        u8g2.drawStr(8, 28, "USER LIVE RECORDER");
 
-        u8g2.setDrawColor(1);
-        u8g2.drawFrame(WAVE_X, WAVE_Y, WAVE_W, WAVE_H);
-        u8g2.drawHLine(WAVE_X, WAVE_CENTER, WAVE_W);
-
-        if (_record_buffer && original_length > 0) {
-            uint32_t vis_start = _trim_start_samples;
-            uint32_t vis_end = _trim_end_samples;
-            uint32_t vis_len = (vis_end > vis_start) ? (vis_end - vis_start) : 1;
-
-            for (int x = 2; x < WAVE_W - 2; x++) {
-                uint32_t s_start = vis_start + (x * vis_len) / WAVE_W;
-                uint32_t s_end = vis_start + ((x + 1) * vis_len) / WAVE_W;
-                if (s_end > original_length) s_end = original_length;
-
-                int16_t max_abs = 0;
-                for (uint32_t s = s_start; s < s_end; s++) {
-                    int16_t v = abs(_record_buffer[s]);
-                    if (v > max_abs) max_abs = v;
-                }
-
-                int half_h = (int)((float)max_abs / 32768.0f * (WAVE_H / 2 - 2));
-                if (half_h > 0) {
-                    u8g2.drawVLine(WAVE_X + x, WAVE_CENTER - half_h, half_h * 2 + 1);
-                }
-            }
+        u8g2.setFont(u8g2_font_6x10_tr);
+        if (original_length > 0) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Len: %.2fs", (float)sample_length / SAMPLER_SAMPLE_RATE);
+            u8g2.drawStr(8, 44, buf);
+        } else {
+            u8g2.drawStr(8, 44, "No Audio Recorded");
         }
 
-        char buf[16];
         u8g2.setFont(u8g2_font_5x7_tr);
-        snprintf(buf, sizeof(buf), "%.2fs", (float)_trim_start_samples / SAMPLER_SAMPLE_RATE);
-        u8g2.drawStr(WAVE_X + 2, WAVE_Y + WAVE_H + 8, buf);
-
-        snprintf(buf, sizeof(buf), "%.2fs", (float)_trim_end_samples / SAMPLER_SAMPLE_RATE);
-        int tw = u8g2.getStrWidth(buf);
-        u8g2.drawStr(WAVE_X + WAVE_W - tw - 2, WAVE_Y + WAVE_H + 8, buf);
+        u8g2.drawStr(8, 56, "Toggle 'Record' on SYNTH tab");
     }
 }
