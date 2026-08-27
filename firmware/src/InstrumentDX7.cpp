@@ -100,13 +100,18 @@ void InstrumentDX7::init() {
 void InstrumentDX7::start() {
     isActive = true;
 
+    // Load authentic 6-operator DX7 FM patch (Patches 128..255 in AMY)
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.num_voices = 8;
     e.patch_number = patch + 128;
     amy_add_event(&e);
 
-    sendAllParams();
+    // Apply global FX settings without overwriting DX7 operator envelopes
+    configChorus();
+    configReverb();
+    configDelay();
+
     needsUIRedraw = true;
 }
 
@@ -125,10 +130,14 @@ void InstrumentDX7::setPatch(int index) {
     
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
+    e.num_voices = 8;
     e.patch_number = patch + 128;
     amy_add_event(&e);
 
-    sendAllParams();
+    configChorus();
+    configReverb();
+    configDelay();
+
     needsUIRedraw = true;
 }
 
@@ -153,31 +162,14 @@ void InstrumentDX7::drawUI(U8G2 &u8g2) {
 }
 
 void InstrumentDX7::onParamChanged(uint8_t paramIndex) {
-    sendAdsr();
-    sendFilter();
-    configChorus();
-    configReverb();
-    configDelay();
+    if (paramIndex >= 8) {
+        configChorus();
+        configReverb();
+        configDelay();
+    }
     needsUIRedraw = true;
 }
 
 void InstrumentDX7::sendAdsr() {
-    amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
-
-    uint16_t a_ms = (uint16_t)fmax(params.attack_ms, 1.0f);
-    uint16_t d_ms = (uint16_t)fmax(params.decay_ms, 1.0f);
-    uint16_t r_ms = (uint16_t)fmax(params.release_ms, 1.0f);
-    float s_val   = constrain(params.sustain_pct / 100.0f, 0.0f, 1.0f);
-    
-    e.eg1_times[0] = a_ms;
-    e.eg1_values[0] = 1.0f;
-
-    e.eg1_times[1] = d_ms;
-    e.eg1_values[1] = s_val;
-
-    e.eg1_times[2] = r_ms;
-    e.eg1_values[2] = 0.0f;
-
-    amy_add_event(&e);
+    // DX7 patches use their own factory 6-operator envelope curves
 }

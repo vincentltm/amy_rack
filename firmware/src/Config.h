@@ -88,12 +88,13 @@
 // -----------------------------------------------------------------------------
 // Instruments
 // -----------------------------------------------------------------------------
-#define NUM_INSTRUMENTS         5
+#define NUM_INSTRUMENTS         6
 #define INST_DX7                0
 #define INST_JUNO               1
 #define INST_ANALOG             2
 #define INST_SAMPLER            3
 #define INST_PIANO              4
+#define INST_DRUMS              5
 #define DEFAULT_INSTRUMENT      INST_JUNO
 
 #define MAX_PARAMS              24

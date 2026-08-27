@@ -4,19 +4,21 @@
 #include "CVManager.h"
 #include "MidiManager.h"
 
-// Include all 5 instrument types
+// Include all 6 instrument types
 #include "InstrumentDX7.h"
 #include "InstrumentJuno.h"
 #include "InstrumentAnalog.h"
 #include "InstrumentSampler.h"
 #include "InstrumentPiano.h"
+#include "InstrumentDrum.h"
 
 static const char* engineNames[NUM_INSTRUMENTS] = {
     "DX7",
     "JUNO-106",
     "ANALOG",
     "SAMPLER",
-    "PIANO"
+    "PIANO",
+    "DRUM"
 };
 
 static const char* voiceModeNames[2] = {
@@ -59,6 +61,7 @@ void System::initInstruments() {
     _instruments[INST_ANALOG]  = new InstrumentAnalog();
     _instruments[INST_SAMPLER] = new InstrumentSampler();
     _instruments[INST_PIANO]   = new InstrumentPiano();
+    _instruments[INST_DRUMS]   = new InstrumentDrum();
 
     for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
         _instruments[i]->init();
