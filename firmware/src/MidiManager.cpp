@@ -37,7 +37,9 @@ void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex)
     uint8_t status = bytes[0] & 0xF0;
     uint8_t channel = bytes[0] & 0x0F;
 
-    if (instance->listenChannel < 16 && channel != instance->listenChannel) {
+    bool isDrumChannel = (channel == 9); // MIDI Ch 10 (0-indexed 9) is dedicated drum channel
+
+    if (!isDrumChannel && instance->listenChannel < 16 && channel != instance->listenChannel) {
         // Filter out if not on current channel (unless Omni mode)
         return;
     }

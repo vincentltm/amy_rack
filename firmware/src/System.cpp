@@ -273,6 +273,27 @@ void System::switchInstrument(uint8_t index) {
         _instruments[_currentInstrument]->start();
     }
 
+    // Always maintain background multi-timbral Drum Synth on MIDI Channel 10
+    if (_currentInstrument != INST_DRUMS) {
+        amy_event e = amy_default_event();
+        e.reset_osc = RESET_PATCH;
+        e.patch_number = 1025;
+        amy_add_event(&e);
+
+        e = amy_default_event();
+        e.patch_number = 1025;
+        e.wave = PCM;
+        e.preset = 1;
+        amy_add_event(&e);
+
+        e = amy_default_event();
+        e.synth = 10;
+        e.patch_number = 1025;
+        e.num_voices = 6;
+        e.synth_flags = _SYNTH_FLAGS_MIDI_DRUMS | _SYNTH_FLAGS_IGNORE_NOTE_OFFS;
+        amy_add_event(&e);
+    }
+
     updateTabParams();
     _selectedParam = 0;
     if (_instruments[_currentInstrument]) {
