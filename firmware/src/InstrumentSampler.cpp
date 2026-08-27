@@ -35,7 +35,7 @@ InstrumentSampler::~InstrumentSampler() {
 }
 
 void InstrumentSampler::init() {
-    _amy_user_preset = 1000;
+    _amy_preset_num = 1;
     buildBaseParams();
 
     // Tab: SYNTH
@@ -91,6 +91,7 @@ void InstrumentSampler::update() {
 
 void InstrumentSampler::noteOn(uint8_t note, float velocity) {
     if (!isActive || isRecording) return;
+    if (_currentPatch == 11 && sample_length == 0) return;
 
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
@@ -216,8 +217,10 @@ void InstrumentSampler::reloadTrimmedSample() {
 
     uint32_t trimmed_len = _trim_end_samples - _trim_start_samples;
 
+    _amy_preset_num = 11; // User preset slot
+
     int16_t *amy_buf = pcm_load(
-        _amy_user_preset,
+        _amy_preset_num,
         trimmed_len,
         SAMPLER_SAMPLE_RATE,
         1,
@@ -235,26 +238,28 @@ void InstrumentSampler::reloadTrimmedSample() {
 void InstrumentSampler::setupSynthVoices() {
     uint16_t presetNum = 1; // 808 Kick
     if (_currentPatch == 11) {
-        presetNum = _amy_user_preset;
+        presetNum = 11; // User preset
     } else if (_currentPatch >= 0 && _currentPatch < 11) {
         presetNum = romPresetMap[_currentPatch];
     }
 
     amy_event e = amy_default_event();
     e.reset_osc = RESET_PATCH;
-    e.patch_number = 1025;
+    e.patch_number = 1024;
     amy_add_event(&e);
 
-    char patchStr[32];
-    snprintf(patchStr, sizeof(patchStr), "v0w7p%dZ", presetNum);
     e = amy_default_event();
-    e.patch_number = 1025;
-    patches_store_patch(&e, patchStr);
+    e.osc = 0;
+    e.patch_number = 1024;
+    e.wave = PCM;
+    e.preset = presetNum;
+    amy_add_event(&e);
 
     e = amy_default_event();
     e.synth = getSynthChannel();
-    e.patch_number = 1025;
+    e.patch_number = 1024;
     e.num_voices = 6;
+    e.volume = 2.5f;
     amy_add_event(&e);
 
     sendAllParams();

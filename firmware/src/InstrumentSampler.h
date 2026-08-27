@@ -24,6 +24,8 @@ public:
     const ParamDescriptor *getParams() const override { return _samplerParams; }
     uint8_t getParamCount() const override { return _samplerParamCount; }
 
+    uint8_t getSynthChannel() override { return 3; }
+
     int getPatchCount() const override { return 12; }
     int getCurrentPatch() const override { return _currentPatch; }
     void setPatch(int index) override;
@@ -43,7 +45,7 @@ private:
     TaskHandle_t _recordingTaskHandle = nullptr;
     volatile bool recordingFinished = false;
 
-    uint16_t _amy_user_preset = 1000;
+    uint16_t _amy_preset_num = 1;
 
     // Parameters
     float _param_record = 0.0f;     // 0 = idle, 1 = record
