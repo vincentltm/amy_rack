@@ -6,33 +6,34 @@
 #include <algorithm>
 #include <cmath>
 
-void textCenteredAtX(U8G2 &u8g2, int centerX, int y, const char *text) {
+static void textCenteredAtX(U8G2 &u8g2, int centerX, int y, const char *text) {
     int textWidth = u8g2.getStrWidth(text);
     int startX = centerX - (textWidth / 2);
     u8g2.drawStr(startX, y, text);
 }
 
-void draw_algo(U8G2 &u8g2,
-               const std::vector<std::pair<int, int>> &top_connections,
-               const std::vector<std::pair<int, int>> &bottom_connections,
-               const std::vector<int> &carriers,
-               int bottom_offset, int base_y) {
+static void draw_algo(U8G2 &u8g2,
+                      const std::vector<std::pair<int, int>> &top_connections,
+                      const std::vector<std::pair<int, int>> &bottom_connections,
+                      const std::vector<int> &carriers,
+                      int base_y) {
     char buffer[2];
 
     for (int op = 0; op < 6; op++) {
         int x_0 = 2 + op * 21;
         int w = 16;
         int h = 16;
-        int y_0 = base_y - bottom_offset - h;
+        int y_0 = base_y - h;
 
         u8g2.setDrawColor(1);
         itoa(op+1, buffer, 10);
-        textCenteredAtX(u8g2, x_0+8, y_0 + 13, buffer);
+        u8g2.setFont(u8g2_font_5x7_tr);
+        textCenteredAtX(u8g2, x_0 + 8, y_0 + 11, buffer);
 
         bool is_carrier = (std::find(carriers.begin(), carriers.end(), op) != carriers.end());
 
         if (is_carrier) {
-            u8g2.setDrawColor(2); 
+            u8g2.setDrawColor(2); // XOR mode
             u8g2.drawBox(x_0, y_0, w, h);
         } else {
             u8g2.drawFrame(x_0, y_0, w, h);
@@ -46,20 +47,20 @@ void draw_algo(U8G2 &u8g2,
         int b = conn.second;
 
         int x_a = 2 + a * 21;
-        int y_hline = base_y - bottom_offset - 16 - 4;
+        int y_hline = base_y - 16 - 4;
 
-        u8g2.drawVLine(x_a + 8, y_hline, 3);
+        u8g2.drawVLine(x_a + 8, y_hline, 4);
 
         if (a != b) {
             int x_b = 2 + b * 21;
-            u8g2.drawVLine(x_b + 8, y_hline, 3);
+            u8g2.drawVLine(x_b + 8, y_hline, 4);
 
             int start_x = std::min(x_a, x_b);
             int width = std::abs(x_b - x_a) + 1;
             u8g2.drawHLine(start_x + 8, y_hline, width);
         } else {
-            u8g2.drawHLine(x_a + 17, base_y - bottom_offset - 8, 2);
-            u8g2.drawVLine(x_a + 18, y_hline, 12);
+            u8g2.drawHLine(x_a + 17, base_y - 8, 2);
+            u8g2.drawVLine(x_a + 18, y_hline, 10);
             u8g2.drawHLine(x_a + 8, y_hline, 11);
         }
     }
@@ -69,20 +70,20 @@ void draw_algo(U8G2 &u8g2,
         int b = conn.second;
 
         int x_a = 2 + a * 21;
-        int y_hline = base_y - bottom_offset + 3;
+        int y_hline = base_y + 4;
 
-        u8g2.drawVLine(x_a + 8, y_hline - 2, 3);
+        u8g2.drawVLine(x_a + 8, y_hline - 4, 4);
 
         if (a != b) {
             int x_b = 2 + b * 21;
-            u8g2.drawVLine(x_b + 8, y_hline - 2, 3);
+            u8g2.drawVLine(x_b + 8, y_hline - 4, 4);
 
             int start_x = std::min(x_a, x_b);
             int width = std::abs(x_b - x_a) + 1;
             u8g2.drawHLine(start_x + 8, y_hline, width);
         } else {
-            u8g2.drawHLine(x_a + 17, base_y - bottom_offset - 8, 2);
-            u8g2.drawVLine(x_a + 18, y_hline - 12, 12);
+            u8g2.drawHLine(x_a + 17, base_y - 8, 2);
+            u8g2.drawVLine(x_a + 18, y_hline - 10, 10);
             u8g2.drawHLine(x_a + 8, y_hline, 11);
         }
     }
@@ -94,7 +95,6 @@ void InstrumentDX7::init() {
     for (int i = 0; i < _baseParamCount; i++) {
         _dx7Params[i] = _baseParams[i];
     }
-    // Debug: Serial.println("  [DX-7] Initialized (Patches 128-255)");
 }
 
 void InstrumentDX7::start() {
@@ -107,7 +107,6 @@ void InstrumentDX7::start() {
     amy_add_event(&e);
 
     needsUIRedraw = true;
-    // Debug: Serial.printf("  [DX-7] Ready (patch %d)\n", patch);
 }
 
 void InstrumentDX7::stop() {
@@ -127,7 +126,6 @@ void InstrumentDX7::setPatch(int index) {
     e.synth = getSynthChannel();
     e.patch_number = patch + 128;
     amy_add_event(&e);
-    // Debug: Serial.printf("  [DX-7] Patch %d\n", patch);
     needsUIRedraw = true;
 }
 
@@ -137,16 +135,19 @@ const char *InstrumentDX7::getPatchName(int idx) const {
 }
 
 void InstrumentDX7::drawUI(U8G2 &u8g2) {
-    u8g2.setFont(u8g2_font_spleen12x24_mu);
-    u8g2.setCursor(0, INSTRUMENT_UI_Y + 18);
-    u8g2.printf("%s", dx7_patches[patch].name);
-
     uint8_t algoNum = pgm_read_byte(&dx7_patches[patch].algo);
-    const DX7Algo &currentAlgo = dx7_algorithms[algoNum-1];
+    if (algoNum < 1 || algoNum > 32) algoNum = 1;
+    const DX7Algo &currentAlgo = dx7_algorithms[algoNum - 1];
 
-    u8g2.setFont(u8g2_font_tenfatguys_tf);
-    int base_y = INSTRUMENT_UI_Y + INSTRUMENT_UI_H;
-    draw_algo(u8g2, currentAlgo.top, currentAlgo.bottom, currentAlgo.carriers, 9, base_y);
+    // Draw algorithm label
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+    char algoBuf[16];
+    snprintf(algoBuf, sizeof(algoBuf), "ALGORITHM %d", algoNum);
+    u8g2.drawStr(2, 26, algoBuf);
+
+    int base_y = 52;
+    draw_algo(u8g2, currentAlgo.top, currentAlgo.bottom, currentAlgo.carriers, base_y);
 }
 
 void InstrumentDX7::sendAdsr() {

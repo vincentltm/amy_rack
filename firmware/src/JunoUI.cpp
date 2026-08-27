@@ -58,18 +58,13 @@ void drawDualSlider(U8G2 &u8g2, uint8_t centerX, uint8_t leftTipY, uint8_t right
 
 void InstrumentJuno::drawUI(U8G2 &u8g2) {
     const uint8_t screenWidth = 128;
-    const uint8_t screenHeight = INSTRUMENT_UI_Y + INSTRUMENT_UI_H;
     const uint8_t headerBoxHeight = 8;
-    const uint8_t graphHeight = 25;
-    const uint8_t y_offset = INSTRUMENT_UI_Y;
-    const uint8_t headerY = y_offset + 14;
-    const uint8_t graphTop = headerY + headerBoxHeight;
-    const uint8_t graphBottom = graphTop + graphHeight;
+    const uint8_t graphHeight = 32;
+    const uint8_t headerY = 17; // Starts directly below main header
+    const uint8_t graphTop = headerY + headerBoxHeight; // 25
+    const uint8_t graphBottom = graphTop + graphHeight; // 57
 
-    u8g2.setFont(u8g2_font_tenfatguys_tf);
-    u8g2.setCursor(0, y_offset + 11);
-    u8g2.print(juno_patch_names[patch]);
-
+    // 5 column headers
     u8g2.setFont(u8g2_font_5x7_tr);
     const uint8_t colWidths[] = {33, 17, 22, 22, 33};
     const char *labels[] = {"DCO", "HPF", "VCF", "LFO", "ENV"};
@@ -85,12 +80,13 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
         x += colWidths[i];
     }
     u8g2.setDrawColor(1);
-    u8g2.drawVLine(x, headerY + headerBoxHeight, graphHeight);
-    u8g2.drawHLine(0, screenHeight - 6, screenWidth);
+    u8g2.drawVLine(x - 1, headerY + headerBoxHeight, graphHeight);
+    u8g2.drawHLine(0, graphBottom, screenWidth);
 
+    // Column 1: DCO
     uint8_t dcoX = 0;
     uint8_t dcoWidth = colWidths[0];
-    uint8_t dcoTopHeight = 8;
+    uint8_t dcoTopHeight = 9;
     uint8_t dcoSplitY = graphTop + dcoTopHeight;
 
     u8g2.drawHLine(dcoX + 1, dcoSplitY + 1, dcoWidth - 1);
@@ -143,6 +139,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t noiseBarHeight = std::max((uint8_t)(state.dco_noise * (barMaxHeight+1)), (uint8_t)1);
     u8g2.drawBox(noiseBarX, graphBottom - 2 - noiseBarHeight, barWidth, noiseBarHeight);
 
+    // Column 2: HPF
     uint8_t hpfX = colWidths[0];
     uint8_t hpfWidth = colWidths[1];
     uint8_t hpfCenterX = hpfX + hpfWidth / 2;
@@ -153,10 +150,12 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     drawSlider(u8g2, hpfCenterX, hpfSliderTop, hpfSliderBottom, hpfLineY);
 
     uint8_t hpfLineIdx = 3 - (uint8_t)state.hpf;
+    if (hpfLineIdx > 3) hpfLineIdx = 3;
     uint8_t hpfTriangleTipY = hpfLineY[hpfLineIdx] - 1;
 
     drawHPFTriangles(u8g2, hpfCenterX, hpfTriangleTipY);
 
+    // Column 3: VCF
     uint8_t vcfX = hpfX + hpfWidth;
     uint8_t vcfWidth = colWidths[2];
     uint8_t vcfCenterX = vcfX + vcfWidth / 2;
@@ -174,6 +173,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
 
     drawDualSlider(u8g2, vcfCenterX, freqTipY, resTipY, 'F', 'R', graphBottom, graphTop);
 
+    // Column 4: LFO
     uint8_t lfoX = vcfX + vcfWidth;
     uint8_t lfoWidth = colWidths[3];
     uint8_t lfoCenterX = lfoX + lfoWidth / 2;
@@ -191,6 +191,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
 
     drawDualSlider(u8g2, lfoCenterX, lfoFreqTipY, lfoAmpTipY, 'F', 'A', graphBottom, graphTop);
 
+    // Column 5: ENV
     uint8_t envX = lfoX + lfoWidth;
     uint8_t envWidth = colWidths[4];
     uint8_t envGraphLeft = envX + 2;
@@ -200,7 +201,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t envGraphBottom = graphBottom - 4;
     uint8_t envGraphHeight = envGraphBottom - envGraphTop;
 
-    uint8_t maxSegmentWidth = envGraphWidth / 3.1;
+    uint8_t maxSegmentWidth = (uint8_t)(envGraphWidth / 3.1f);
 
     uint8_t attackWidth =  std::max((uint8_t)1, (uint8_t)(state.env_a * maxSegmentWidth));
     uint8_t decayWidth =   std::max((uint8_t)1, (uint8_t)(state.env_d * maxSegmentWidth));

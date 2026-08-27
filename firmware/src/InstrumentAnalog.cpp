@@ -1,6 +1,8 @@
 #include "InstrumentAnalog.h"
 #include <cmath>
 
+static const char* waveNames[] = {"SINE", "PULSE", "SAW", "TRI", "NOISE"};
+
 InstrumentAnalog::InstrumentAnalog() {
     _instrumentName = "Analog";
     _instrumentShortName = "ANLG";
@@ -24,6 +26,7 @@ void InstrumentAnalog::init() {
 void InstrumentAnalog::start() {
     isActive = true;
     setupSynthVoices();
+    needsUIRedraw = true;
 }
 
 void InstrumentAnalog::stop() {
@@ -32,6 +35,74 @@ void InstrumentAnalog::stop() {
     e.velocity = 0.0f;
     amy_add_event(&e);
     isActive = false;
+}
+
+void InstrumentAnalog::drawWaveShape(U8G2 &u8g2, uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t waveType) {
+    u8g2.drawFrame(x, y, w, h);
+    int midY = y + h / 2;
+    
+    switch (waveType) {
+        case 0: // SINE
+            u8g2.drawCircle(x + w / 4, midY - 3, 4, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
+            u8g2.drawCircle(x + 3 * w / 4, midY + 3, 4, U8G2_DRAW_LOWER_RIGHT | U8G2_DRAW_LOWER_LEFT);
+            break;
+        case 1: // PULSE
+            u8g2.drawVLine(x + 4, midY - 6, 12);
+            u8g2.drawHLine(x + 4, midY - 6, w / 2 - 4);
+            u8g2.drawVLine(x + w / 2, midY - 6, 12);
+            u8g2.drawHLine(x + w / 2, midY + 6, w / 2 - 4);
+            u8g2.drawVLine(x + w - 4, midY - 6, 12);
+            break;
+        case 2: // SAW
+            u8g2.drawLine(x + 4, midY + 6, x + w / 2, midY - 6);
+            u8g2.drawVLine(x + w / 2, midY - 6, 12);
+            u8g2.drawLine(x + w / 2, midY + 6, x + w - 4, midY - 6);
+            u8g2.drawVLine(x + w - 4, midY - 6, 12);
+            break;
+        case 3: // TRI
+            u8g2.drawLine(x + 4, midY + 6, x + w / 4 + 2, midY - 6);
+            u8g2.drawLine(x + w / 4 + 2, midY - 6, x + 3 * w / 4 - 2, midY + 6);
+            u8g2.drawLine(x + 3 * w / 4 - 2, midY + 6, x + w - 4, midY - 6);
+            break;
+        default: // NOISE
+            for (int i = x + 4; i < x + w - 4; i += 3) {
+                int r = ((i * 17) % 12) - 6;
+                u8g2.drawPixel(i, midY + r);
+            }
+            break;
+    }
+}
+
+void InstrumentAnalog::drawUI(U8G2 &u8g2) {
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.setDrawColor(1);
+
+    // Osc 1 Box
+    uint8_t w1 = (uint8_t)_osc1_wave_f;
+    if (w1 > 4) w1 = 0;
+    u8g2.setCursor(8, 26);
+    u8g2.printf("OSC1: %s", waveNames[w1]);
+    drawWaveShape(u8g2, 8, 30, 52, 22, w1);
+
+    // Osc 2 Box
+    uint8_t w2 = (uint8_t)_osc2_wave_f;
+    if (w2 > 4) w2 = 0;
+    u8g2.setCursor(68, 26);
+    u8g2.printf("OSC2: %s", waveNames[w2]);
+    drawWaveShape(u8g2, 68, 30, 52, 22, w2);
+
+    // Balance & Detune indicator
+    u8g2.setCursor(8, 62);
+    u8g2.print("BAL");
+    u8g2.drawFrame(30, 56, 30, 7);
+    int balX = 30 + (int)(_osc_balance * 26.0f);
+    u8g2.drawBox(balX, 57, 4, 5);
+
+    u8g2.setCursor(68, 62);
+    u8g2.print("DET");
+    u8g2.drawFrame(90, 56, 30, 7);
+    int detX = 90 + (int)(_osc2_detune * 26.0f);
+    u8g2.drawBox(detX, 57, 4, 5);
 }
 
 void InstrumentAnalog::onParamChanged(uint8_t paramIndex) {
@@ -98,30 +169,29 @@ void InstrumentAnalog::setupSynthVoices() {
     e.synth = getSynthChannel();
     e.wave = NOISE;
     e.amp_coefs[0] = params.noise * 0.5f;
-    e.amp_coefs[1] = 1.0f;
-    e.amp_coefs[2] = 1.0f;
-    e.chained_osc = OSC_LFO_FILTER;
     amy_add_event(&e);
 
     e = amy_default_event();
     e.osc = OSC_LFO_FILTER;
     e.synth = getSynthChannel();
-    e.wave = SINE;
-    e.freq_coefs[0] = params.lfoFreq * 10.0f;
-    e.amp_coefs[0] = params.lfoAmp;
-    e.freq_coefs[3] = 0;
-    e.amp_coefs[3] = 0;
-    amy_add_event(&e);
-
-    e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.filter_freq_coefs[4] = 1.0f;
+    e.wave = TRIANGLE;
+    e.freq_coefs[0] = params.lfoFreq * 20.0f;
+    e.amp_coefs[0] = params.lfoAmp * 2.0f + 0.001f;
     amy_add_event(&e);
 
     updateOscDetune();
     updateOscBalance();
-    configNoise();
-    configLfo();
+    sendAdsr();
+
+    e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.filter_freq_coefs[0] = params.cutoff;
+    e.resonance = params.resonance;
+    e.filter_type = 1;
+    amy_add_event(&e);
+
+    configReverb();
+    configDelay();
 }
 
 void InstrumentAnalog::sendAdsr() {
@@ -139,10 +209,7 @@ void InstrumentAnalog::sendAdsr() {
     e.eg0_times[2] = r_ms;
     e.eg0_values[2] = 0.0f;
 
-    for (int i = 0; i < 4; i++) {
-        e.osc = i;
-        amy_add_event(&e);
-    }
+    amy_add_event(&e);
 }
 
 void InstrumentAnalog::updateOsc1Wave() {

@@ -21,17 +21,18 @@ public:
     // Direct parameter update
     void update(Instrument* inst, const ParamDescriptor* params, uint8_t paramCount, uint8_t selectedIdx, bool editing, uint8_t midiCh, uint8_t lastNote, bool gateActive);
     
-    void drawHeader(const char* instName, const char* patchName);
+    void drawHeader(const char* instName, const char* patchName, int patchIndex = -1);
     void drawInstrumentUI(Instrument* inst);
     void drawParamList(const ParamDescriptor* params, uint8_t count, uint8_t selectedIdx, bool editing);
-    void drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive);
+    void drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, uint8_t navState = 0);
     void drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected);
     void showSplash();
 
     U8G2& getU8G2() { return u8g2; }
 
 private:
-    U8G2_SH1107_128X128_F_HW_I2C u8g2;
+    // U8G2_SH1107_SEEED_128X128 has default_x_offset = 0 (correct for 128x128 Adafruit/generic displays)
+    U8G2_SH1107_SEEED_128X128_F_HW_I2C u8g2;
     
     Instrument* lastInst = nullptr;
     uint8_t lastSelectedIdx = 255;
@@ -41,5 +42,6 @@ private:
     bool lastGateActive = false;
     uint8_t lastNavState = 255;
     uint8_t lastMenuSel = 255;
+    int lastPatch = -1;
     bool needsRedraw = true;
 };

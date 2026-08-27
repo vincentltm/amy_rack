@@ -17,8 +17,9 @@ private:
     int32_t lastPosition = 0;
     int currentDelta = 0;
     
-    bool buttonState = true;
+    bool buttonState = true;        // true = released (HIGH), false = pressed (LOW)
     uint32_t pressStartTime = 0;
+    bool longPressHandled = false;
     
     bool eventPressed = false;
     bool eventLongPressed = false;

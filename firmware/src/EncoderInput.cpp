@@ -2,15 +2,17 @@
 
 void EncoderInput::begin() {
     if (!seesaw.begin(ENCODER_I2C_ADDR)) {
-        // Initialization failed, maybe add a debug print here
+        Serial.println("[Encoder] ERROR: seesaw not found at 0x36!");
     } else {
         seesaw.pinMode(SEESAW_BUTTON_PIN, INPUT_PULLUP);
         seesaw.enableEncoderInterrupt();
         lastPosition = seesaw.getEncoderPosition();
+        buttonState = seesaw.digitalRead(SEESAW_BUTTON_PIN);
     }
 }
 
 void EncoderInput::update() {
+    // 1. Read encoder rotation
     int32_t currentPosition = seesaw.getEncoderPosition();
     int32_t diff = currentPosition - lastPosition;
     
@@ -22,22 +24,24 @@ void EncoderInput::update() {
         lastPosition = currentPosition;
     }
     
+    // 2. Read button (active LOW: 0 = pressed, 1 = released)
     bool currentButton = seesaw.digitalRead(SEESAW_BUTTON_PIN);
     
-    // button logic (active low)
-    if (buttonState && !currentButton) { // Just pressed
+    if (buttonState && !currentButton) {
+        // Just pressed down (transition HIGH -> LOW)
         pressStartTime = millis();
-    } else if (!buttonState && currentButton) { // Just released
-        if (millis() - pressStartTime < ENCODER_LONG_PRESS_MS) {
-            eventPressed = true;
-        }
-    } else if (!buttonState && !currentButton) { // Held
-        if (millis() - pressStartTime >= ENCODER_LONG_PRESS_MS) {
+        longPressHandled = false;
+    } else if (!buttonState && !currentButton) {
+        // Still held down
+        if (!longPressHandled && (millis() - pressStartTime >= ENCODER_LONG_PRESS_MS)) {
             eventLongPressed = true;
-            // Prevent multiple long presses for a single hold by resetting the timer
-            // or just keeping it active until released. 
-            // We'll mark the press as 'consumed' by resetting the start time.
-            pressStartTime = millis(); 
+            longPressHandled = true; // Handled! Don't trigger short press upon release
+        }
+    } else if (!buttonState && currentButton) {
+        // Just released (transition LOW -> HIGH)
+        if (!longPressHandled) {
+            // Only trigger short tap if it was not already a long-press
+            eventPressed = true;
         }
     }
     
