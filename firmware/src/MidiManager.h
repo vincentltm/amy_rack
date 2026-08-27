@@ -20,11 +20,15 @@ public:
     uint8_t getLastChannel() const { return lastChannel; }
     bool isNoteActive() const { return noteActive; }
 
+    uint8_t getChannel() const { return listenChannel; }
+    void setChannel(uint8_t ch) { listenChannel = ch; }
+
 private:
     CVManager* cvManager = nullptr;
     static MidiManager* instance;
     
     uint8_t lastNote = 255;
-    uint8_t lastChannel = 255;
+    uint8_t lastChannel = 0;
+    uint8_t listenChannel = 0; // 0 = Ch 1, 15 = Ch 16, 16 = Omni
     bool noteActive = false;
 };

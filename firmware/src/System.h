@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// System.h — Tabbed Navigation Architecture for AMY Rack
+// System.h — Tabbed Architecture with Master Overview on MAIN Tab
 // =============================================================================
 
 #include <Arduino.h>
@@ -12,18 +12,10 @@ class EncoderInput;
 class CVManager;
 class MidiManager;
 
-// Hierarchical Navigation States:
-// Level 0: ENGINE_MENU   (Switch engine: DX7, Juno, Analog, Sampler, Piano)
-// Level 1: TAB_SELECT    (Browse horizontal tabs: MAIN | SYNTH | ENV | FX)
-// Level 2: PATCH_BROWSE  (Browse presets when on MAIN tab)
-// Level 3: PARAM_SELECT  (Scroll settings inside active tab)
-// Level 4: PARAM_EDIT    (Adjust setting value in real-time)
 enum class NavState : uint8_t {
-    ENGINE_MENU  = 0,
-    TAB_SELECT   = 1,
-    PATCH_BROWSE = 2,
-    PARAM_SELECT = 3,
-    PARAM_EDIT   = 4
+    TAB_SELECT   = 0, // Turning switches MAIN | SYNTH | ENV | FX
+    PARAM_SELECT = 1, // Turning scrolls settings in active tab
+    PARAM_EDIT   = 2  // Turning edits highlighted setting
 };
 
 class System {
@@ -44,9 +36,7 @@ public:
     bool            isEditingParam()            const { return _navState == NavState::PARAM_EDIT; }
     uint8_t         getTabParamCount()          const { return _tabParamCount; }
     uint8_t         getTabParamRealIndex(uint8_t idx) const;
-
-    // Engine menu state
-    uint8_t         getMenuSelection()          const { return _menuSelection; }
+    const ParamDescriptor* getTabParamDescriptor(uint8_t idx) const;
 
     void switchInstrument(uint8_t index);
 
@@ -63,6 +53,17 @@ private:
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
+    // Master params for TAB_MAIN
+    float _param_engine  = (float)DEFAULT_INSTRUMENT;
+    float _param_patch   = 0.0f;
+    float _param_midi_ch = 0.0f; // 0 = Ch 1, 15 = Ch 16, 16 = Omni
+    float _param_cv1     = 0.0f; // 0 = V/Oct, 1 = Cutoff, 2 = Vol, 3 = Off
+    float _param_cv2     = 0.0f; // 0 = Gate, 1 = ModWhl, 2 = Res, 3 = Off
+
+    ParamDescriptor _masterParams[6];
+    uint8_t _masterParamCount = 0;
+    void initMasterParams();
+
     // Parameter filtering per tab
     uint8_t _selectedParam  = 0;
     uint8_t _paramScrollTop = 0;
@@ -70,14 +71,10 @@ private:
     uint8_t _tabParamCount  = 0;
 
     void updateTabParams();
-
-    // Engine menu
-    uint8_t _menuSelection = 0;
+    void onMasterParamChanged(uint8_t idx);
 
     // State machine handlers
-    void handleEngineMenu();
     void handleTabSelect();
-    void handlePatchBrowse();
     void handleParamSelect();
     void handleParamEdit();
 

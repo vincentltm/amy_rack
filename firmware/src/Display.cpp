@@ -41,31 +41,14 @@ void Display::update(System& sys, MidiManager& midi) {
     NavState state = sys.getNavState();
     uint8_t navStateInt = static_cast<uint8_t>(state);
 
-    if (state == NavState::ENGINE_MENU) {
-        uint8_t menuSel = sys.getMenuSelection();
-        bool dirty = (navStateInt != lastNavState) || (menuSel != lastMenuSel) || needsRedraw;
-        lastNavState = navStateInt;
-        lastMenuSel = menuSel;
-
-        if (dirty) {
-            const char* names[NUM_INSTRUMENTS];
-            for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
-                names[i] = sys.getInstrumentName(i);
-            }
-            drawInstrumentMenu(names, NUM_INSTRUMENTS, menuSel);
-        }
-        return;
-    }
-
     lastNavState = navStateInt;
 
     Instrument* inst = sys.getActiveInstrument();
     TabId activeTab = sys.getActiveTab();
-    const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
     uint8_t tabParamCount = sys.getTabParamCount();
-    uint8_t midiCh = midi.getLastChannel();
+    uint8_t midiCh = midi.getChannel();
     uint8_t lastNote = midi.getLastNote();
     bool gateActive = midi.isNoteActive();
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
@@ -102,12 +85,8 @@ void Display::update(System& sys, MidiManager& midi) {
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
 
         // 4. Parameter List (y=76..127 - 5 full rows)
-        uint8_t tabIndices[MAX_PARAMS];
-        for (uint8_t i = 0; i < tabParamCount; i++) {
-            tabIndices[i] = sys.getTabParamRealIndex(i);
-        }
         bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
-        drawParamList(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
+        drawParamList(sys, tabParamCount, selectedIdx, editing, hasParamFocus);
     }
 
     u8g2.sendBuffer();
@@ -117,19 +96,8 @@ void Display::update(System& sys) {
     NavState state = sys.getNavState();
     uint8_t navStateInt = static_cast<uint8_t>(state);
 
-    if (state == NavState::ENGINE_MENU) {
-        uint8_t menuSel = sys.getMenuSelection();
-        const char* names[NUM_INSTRUMENTS];
-        for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
-            names[i] = sys.getInstrumentName(i);
-        }
-        drawInstrumentMenu(names, NUM_INSTRUMENTS, menuSel);
-        return;
-    }
-
     Instrument* inst = sys.getActiveInstrument();
     TabId activeTab = sys.getActiveTab();
-    const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
     uint8_t tabParamCount = sys.getTabParamCount();
@@ -142,12 +110,8 @@ void Display::update(System& sys) {
         drawVisualizerArea(inst, activeTab);
         drawTabBar(activeTab, (state == NavState::TAB_SELECT));
 
-        uint8_t tabIndices[MAX_PARAMS];
-        for (uint8_t i = 0; i < tabParamCount; i++) {
-            tabIndices[i] = sys.getTabParamRealIndex(i);
-        }
         bool hasParamFocus = (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT);
-        drawParamList(allParams, tabIndices, tabParamCount, selectedIdx, editing, hasParamFocus);
+        drawParamList(sys, tabParamCount, selectedIdx, editing, hasParamFocus);
     }
 
     u8g2.sendBuffer();
@@ -165,10 +129,14 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
     // Middle: Compact MIDI channel & Gate activity dot
     u8g2.setFont(u8g2_font_5x7_tr);
     char midiBuf[8];
-    snprintf(midiBuf, sizeof(midiBuf), "C%d", (midiCh < 16 ? midiCh + 1 : 1));
+    if (midiCh < 16) {
+        snprintf(midiBuf, sizeof(midiBuf), "C%d", midiCh + 1);
+    } else {
+        snprintf(midiBuf, sizeof(midiBuf), "ALL");
+    }
     u8g2.drawStr(44, 10, midiBuf);
     if (gateActive) {
-        u8g2.drawDisc(58, 7, 2); // Animated MIDI activity dot
+        u8g2.drawDisc(60, 7, 2); // Animated MIDI activity dot
     }
 
     // Right: Patch Name
@@ -359,7 +327,7 @@ void Display::drawTabBar(TabId activeTab, bool tabFocus) {
     u8g2.drawHLine(0, TAB_BAR_Y + TAB_BAR_H + 1, SCREEN_WIDTH);
 }
 
-void Display::drawParamList(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus) {
+void Display::drawParamList(System& sys, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus) {
     if (count == 0) {
         u8g2.setFont(FONT_PARAM_NAME);
         u8g2.setDrawColor(1);
@@ -369,7 +337,7 @@ void Display::drawParamList(const ParamDescriptor* allParams, const uint8_t* tab
 
     u8g2.setFont(FONT_PARAM_NAME);
     
-    uint8_t visibleRows = 5; // 5 full rows fit in y=76..127!
+    uint8_t visibleRows = 5; // 5 full rows
     uint8_t startIdx = 0;
     
     if (selectedIdx >= visibleRows) {
@@ -380,7 +348,9 @@ void Display::drawParamList(const ParamDescriptor* allParams, const uint8_t* tab
         uint8_t tIdx = startIdx + i;
         if (tIdx >= count) break;
         
-        uint8_t realIdx = tabIndices[tIdx];
+        const ParamDescriptor* param = sys.getTabParamDescriptor(tIdx);
+        if (!param) continue;
+
         int y = PARAM_LIST_Y + (i * PARAM_ROW_H);
         bool isSelected = (tIdx == selectedIdx && hasFocus);
         
@@ -394,14 +364,14 @@ void Display::drawParamList(const ParamDescriptor* allParams, const uint8_t* tab
         
         if (isSelected && editing) {
             char nameWithIndicator[32];
-            snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", allParams[realIdx].name);
+            snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", param->name);
             u8g2.drawStr(2, y + 8, nameWithIndicator);
         } else {
-            u8g2.drawStr(2, y + 8, allParams[realIdx].name);
+            u8g2.drawStr(2, y + 8, param->name);
         }
         
         char valBuf[32];
-        allParams[realIdx].formatValue(valBuf, sizeof(valBuf));
+        param->formatValue(valBuf, sizeof(valBuf));
         
         int w = u8g2.getStrWidth(valBuf);
         u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 8, valBuf);

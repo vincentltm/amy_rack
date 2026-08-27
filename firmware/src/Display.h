@@ -21,7 +21,7 @@ public:
     void drawFilterEnvPlot(const SynthParams& p);
     void drawFXPlot(const SynthParams& p);
     void drawTabBar(TabId activeTab, bool tabFocus);
-    void drawParamList(const ParamDescriptor* allParams, const uint8_t* tabIndices, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus);
+    void drawParamList(System& sys, uint8_t count, uint8_t selectedIdx, bool editing, bool hasFocus);
     void drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected);
     void showSplash();
 
@@ -38,7 +38,6 @@ private:
     uint8_t lastNote = 255;
     bool lastGateActive = false;
     uint8_t lastNavState = 255;
-    uint8_t lastMenuSel = 255;
     int lastPatch = -1;
     bool needsRedraw = true;
 };
