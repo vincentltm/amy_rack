@@ -24,7 +24,7 @@ public:
     const ParamDescriptor *getParams() const override { return _samplerParams; }
     uint8_t getParamCount() const override { return _samplerParamCount; }
 
-    uint8_t getSynthChannel() override { return 3; }
+    uint8_t getSynthChannel() override { return 1; }
 
     int getPatchCount() const override { return 12; }
     int getCurrentPatch() const override { return _currentPatch; }
