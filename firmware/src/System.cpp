@@ -4,21 +4,31 @@
 #include "CVManager.h"
 #include "MidiManager.h"
 
-// Include all 6 instrument types
+// Include all 5 melodic synth engines
 #include "InstrumentDX7.h"
 #include "InstrumentJuno.h"
 #include "InstrumentAnalog.h"
 #include "InstrumentSampler.h"
 #include "InstrumentPiano.h"
-#include "InstrumentDrum.h"
 
 static const char* engineNames[NUM_INSTRUMENTS] = {
     "DX7",
     "JUNO-106",
     "ANALOG",
     "SAMPLER",
-    "PIANO",
-    "DRUM"
+    "PIANO"
+};
+
+static const char* drumKitNames[9] = {
+    "TR-808",
+    "TR-909",
+    "Linn 9000",
+    "MR-12",
+    "Tokyo Synth",
+    "Power Kit",
+    "Percussion",
+    "808 Electro",
+    "808 Sub Boom"
 };
 
 static const char* voiceModeNames[2] = {
@@ -39,6 +49,9 @@ static const char* cv2Names[4] = {
     "Gate", "ModWhl", "Reson", "Off"
 };
 
+static float dummyVoiceMode = 0.0f;
+static float dummyGlide = 0.0f;
+
 System Sys;
 
 void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager &midi) {
@@ -50,6 +63,8 @@ void System::begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager 
     initInstruments();
     initMasterParams();
     switchInstrument(DEFAULT_INSTRUMENT);
+    updateDrumEngine();
+
     _activeTab = TabId::TAB_MAIN;
     updateTabParams();
     enterState(NavState::TAB_SELECT);
@@ -61,7 +76,6 @@ void System::initInstruments() {
     _instruments[INST_ANALOG]  = new InstrumentAnalog();
     _instruments[INST_SAMPLER] = new InstrumentSampler();
     _instruments[INST_PIANO]   = new InstrumentPiano();
-    _instruments[INST_DRUMS]   = new InstrumentDrum();
 
     for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
         _instruments[i]->init();
@@ -69,21 +83,30 @@ void System::initInstruments() {
 }
 
 void System::initMasterParams() {
-    Instrument *inst = getActiveInstrument();
+    // --- TAB_MAIN ---
+    _masterParams[0] = PARAM_ENUM("Synth", NUM_INSTRUMENTS, &_param_engine, engineNames, TAB_MAIN);
+    _masterParams[1] = PARAM_INT("Patch", "", 0, 127, &_param_patch, TAB_MAIN);
+    _masterParams[2] = PARAM_ENUM("Drums", 9, &_param_drum_kit, drumKitNames, TAB_MAIN);
+    _masterParams[3] = PARAM_PCT("Synth Vol", 0.0f, 100.0f, 1.0f, &_param_synth_vol, TAB_MAIN);
+    _masterParams[4] = PARAM_PCT("Drum Vol", 0.0f, 100.0f, 1.0f, &_param_drum_vol, TAB_MAIN);
+    _masterParams[5] = PARAM_ENUM("Voice Mode", 2, &dummyVoiceMode, voiceModeNames, TAB_MAIN);
+    _masterParams[6] = PARAM_FLOAT("Glide", "ms", 0.0f, 500.0f, 5.0f, &dummyGlide, TAB_MAIN);
 
-    // TAB_MAIN
-    _masterParams[0] = PARAM_ENUM("Engine",     NUM_INSTRUMENTS - 1, &_param_engine,  engineNames,      TAB_MAIN);
-    _masterParams[1] = PARAM_INT("Patch",       "", 0, 127,           &_param_patch,                    TAB_MAIN);
-    _masterParams[2] = PARAM_ENUM("Voice Mode", 1,                   inst ? &(inst->params.voice_mode) : nullptr, voiceModeNames, TAB_MAIN);
-    _masterParams[3] = PARAM_MS("Glide Time",   0.0f, 500.0f, 10.0f,  inst ? &(inst->params.glide_ms) : nullptr, TAB_MAIN);
-    _masterParams[4] = PARAM_PCT("Volume",      0.0f, 100.0f, 5.0f,   &_param_volume,                   TAB_MAIN);
+    // --- TAB_DRUM ---
+    _masterParams[7]  = PARAM_ENUM("Drums", 9, &_param_drum_kit, drumKitNames, TAB_DRUM);
+    _masterParams[8]  = PARAM_PCT("Drum Vol", 0.0f, 100.0f, 1.0f, &_param_drum_vol, TAB_DRUM);
+    _masterParams[9]  = PARAM_FLOAT("Kick Tune", "st", -12.0f, 12.0f, 1.0f, &_param_kick_tune, TAB_DRUM);
+    _masterParams[10] = PARAM_FLOAT("Snare Tune", "st", -12.0f, 12.0f, 1.0f, &_param_snare_tune, TAB_DRUM);
+    _masterParams[11] = PARAM_FLOAT("Tom Tune", "st", -12.0f, 12.0f, 1.0f, &_param_tom_tune, TAB_DRUM);
+    _masterParams[12] = PARAM_FLOAT("Drive", "x", 0.5f, 5.0f, 0.1f, &_param_drum_drive, TAB_DRUM);
 
-    // TAB_MIDI
-    _masterParams[5] = PARAM_ENUM("MIDI Ch",    16,                  &_param_midi_ch, midiChannelNames, TAB_MIDI);
-    _masterParams[6] = PARAM_ENUM("CV1 In",     3,                   &_param_cv1,     cv1Names,         TAB_MIDI);
-    _masterParams[7] = PARAM_ENUM("CV2 In",     3,                   &_param_cv2,     cv2Names,         TAB_MIDI);
+    // --- TAB_MIDI ---
+    _masterParams[13] = PARAM_ENUM("Synth MIDI", 17, &_param_synth_midi_ch, midiChannelNames, TAB_MIDI);
+    _masterParams[14] = PARAM_ENUM("Drum MIDI", 17, &_param_drum_midi_ch, midiChannelNames, TAB_MIDI);
+    _masterParams[15] = PARAM_ENUM("CV 1 Out", 4, &_param_cv1, cv1Names, TAB_MIDI);
+    _masterParams[16] = PARAM_ENUM("CV 2 Out", 4, &_param_cv2, cv2Names, TAB_MIDI);
 
-    _masterParamCount = 8;
+    _masterParamCount = 17;
 }
 
 void System::update() {
@@ -101,12 +124,12 @@ void System::updateTabParams() {
     Instrument *inst = getActiveInstrument();
     _tabParamCount = 0;
 
-    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
+    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_DRUM || _activeTab == TabId::TAB_MIDI) {
         if (inst) {
             _masterParams[1].maxVal = (float)std::max(0, inst->getPatchCount() - 1);
             _param_patch = (float)inst->getCurrentPatch();
-            _masterParams[2].valuePtr = &(inst->params.voice_mode);
-            _masterParams[3].valuePtr = &(inst->params.glide_ms);
+            _masterParams[5].valuePtr = &(inst->params.voice_mode);
+            _masterParams[6].valuePtr = &(inst->params.glide_ms);
         }
         _param_engine = (float)_currentInstrument;
 
@@ -134,14 +157,15 @@ const ParamDescriptor* System::getTabParamDescriptor(uint8_t idx) const {
     if (idx >= _tabParamCount) return nullptr;
     uint8_t realIdx = _tabIndices[idx];
 
-    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
+    if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_DRUM || _activeTab == TabId::TAB_MIDI) {
         if (realIdx < _masterParamCount) return &_masterParams[realIdx];
         return nullptr;
     }
+
     Instrument *inst = getActiveInstrument();
-    if (inst) {
-        return &(inst->getParams()[realIdx]);
-    }
+    if (!inst) return nullptr;
+    const ParamDescriptor *params = inst->getParams();
+    if (realIdx < inst->getParamCount()) return &params[realIdx];
     return nullptr;
 }
 
@@ -150,9 +174,6 @@ uint8_t System::getTabParamRealIndex(uint8_t idx) const {
     return 0;
 }
 
-// -----------------------------------------------------------------------------
-// Level 0: TAB_SELECT (Horizontal Tab Bar: MAIN | SYNTH | ENV | FX | MIDI)
-// -----------------------------------------------------------------------------
 void System::handleTabSelect() {
     int delta = _encoder->getDelta();
     if (delta != 0) {
@@ -176,9 +197,6 @@ void System::handleTabSelect() {
     }
 }
 
-// -----------------------------------------------------------------------------
-// Level 1: PARAM_SELECT (Scroll vertical parameter list)
-// -----------------------------------------------------------------------------
 void System::handleParamSelect() {
     int delta = _encoder->getDelta();
     if (delta != 0 && _tabParamCount > 0) {
@@ -188,72 +206,117 @@ void System::handleParamSelect() {
         _selectedParam = (uint8_t)next;
     }
 
-    if (_encoder->wasPressed()) {
-        if (_tabParamCount > 0) {
-            enterState(NavState::PARAM_EDIT);
-        }
-    }
-
     if (_encoder->wasLongPressed()) {
         enterState(NavState::TAB_SELECT);
+        return;
+    }
+
+    if (_encoder->wasPressed()) {
+        enterState(NavState::PARAM_EDIT);
     }
 }
 
-// -----------------------------------------------------------------------------
-// Level 2: PARAM_EDIT (Turn encoder to live adjust value)
-// -----------------------------------------------------------------------------
 void System::handleParamEdit() {
     int delta = _encoder->getDelta();
     if (delta != 0) {
-        if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_MIDI) {
-            uint8_t realIdx = _tabIndices[_selectedParam];
-            if (realIdx < _masterParamCount) {
-                _masterParams[realIdx].adjust(delta, false);
-                onMasterParamChanged(realIdx);
-            }
-        } else {
-            Instrument *inst = getActiveInstrument();
-            if (inst) {
-                uint8_t realIdx = _tabIndices[_selectedParam];
-                const ParamDescriptor *desc = &(inst->getParams()[realIdx]);
-                if (desc) {
-                    desc->adjust(delta, false);
-                    inst->onParamChanged(realIdx);
-                }
+        const ParamDescriptor *desc = getTabParamDescriptor(_selectedParam);
+        if (desc) {
+            desc->adjust(delta);
+
+            if (_activeTab == TabId::TAB_MAIN || _activeTab == TabId::TAB_DRUM || _activeTab == TabId::TAB_MIDI) {
+                onMasterParamChanged(_tabIndices[_selectedParam]);
+            } else {
+                Instrument *inst = getActiveInstrument();
+                if (inst) inst->onParamChanged(_tabIndices[_selectedParam]);
             }
         }
     }
 
-    if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
+    if (_encoder->wasPressed()) {
         enterState(NavState::PARAM_SELECT);
     }
 }
 
 void System::onMasterParamChanged(uint8_t idx) {
-    if (idx == 0) { // Engine
+    if (idx == 0) { // Synth Engine
         uint8_t newInst = (uint8_t)roundf(_param_engine);
         if (newInst < NUM_INSTRUMENTS && newInst != _currentInstrument) {
             switchInstrument(newInst);
         }
-    } else if (idx == 1) { // Patch
+    } else if (idx == 1) { // Synth Patch
         Instrument *inst = getActiveInstrument();
         if (inst) {
             inst->setPatch((int)roundf(_param_patch));
         }
-    } else if (idx == 2 || idx == 3) { // Voice Mode or Glide Time
+    } else if (idx == 2 || idx == 7) { // Drum Kit
+        int kit = (int)roundf(_param_drum_kit);
+        if (kit == 0) { // 808 Classic
+            _param_kick_tune = 0.0f; _param_snare_tune = 0.0f; _param_tom_tune = 0.0f; _param_drum_drive = 2.0f;
+        } else if (kit == 1) { // 909
+            _param_kick_tune = 2.0f; _param_snare_tune = 3.0f; _param_tom_tune = 2.0f; _param_drum_drive = 2.5f;
+        } else if (kit == 2) { // Linn 9000
+            _param_kick_tune = -1.0f; _param_snare_tune = 2.0f; _param_tom_tune = 0.0f; _param_drum_drive = 2.2f;
+        } else if (kit == 3) { // MR-12
+            _param_kick_tune = 4.0f; _param_snare_tune = 1.0f; _param_tom_tune = 3.0f; _param_drum_drive = 2.0f;
+        } else if (kit == 4) { // Tokyo Synth
+            _param_kick_tune = -4.0f; _param_snare_tune = 5.0f; _param_tom_tune = 7.0f; _param_drum_drive = 3.0f;
+        } else if (kit == 5) { // Power Kit
+            _param_kick_tune = 0.0f; _param_snare_tune = -2.0f; _param_tom_tune = -3.0f; _param_drum_drive = 3.2f;
+        } else if (kit == 6) { // Percussion
+            _param_kick_tune = -3.0f; _param_snare_tune = 0.0f; _param_tom_tune = 5.0f; _param_drum_drive = 1.8f;
+        } else if (kit == 7) { // 808 Electro
+            _param_kick_tune = 3.0f; _param_snare_tune = 4.0f; _param_tom_tune = 2.0f; _param_drum_drive = 2.8f;
+        } else if (kit == 8) { // 808 Sub Boom
+            _param_kick_tune = -7.0f; _param_snare_tune = -2.0f; _param_tom_tune = -5.0f; _param_drum_drive = 3.5f;
+        }
+        updateDrumEngine();
+    } else if (idx == 3) { // Synth Vol
+        amy_event e = amy_default_event();
+        e.synth = 1;
+        e.volume = _param_synth_vol / 100.0f;
+        amy_add_event(&e);
+    } else if (idx == 4 || idx == 8) { // Drum Vol
+        amy_event e = amy_default_event();
+        e.synth = 10;
+        e.volume = _param_drum_vol / 100.0f;
+        amy_add_event(&e);
+    } else if (idx == 5 || idx == 6) { // Voice Mode or Glide Time
         Instrument *inst = getActiveInstrument();
         if (inst) {
             inst->applyVoiceMode();
         }
-    } else if (idx == 4) { // Volume
-        amy_event e = amy_default_event();
-        e.volume = _param_volume / 100.0f;
-        amy_add_event(&e);
-    } else if (idx == 5) { // MIDI Ch
+    } else if (idx >= 9 && idx <= 12) { // Drum Tuning & Drive
+        updateDrumEngine();
+    } else if (idx == 13) { // Synth MIDI Ch
         if (_midi) {
-            _midi->setChannel((uint8_t)roundf(_param_midi_ch));
+            _midi->setChannel((uint8_t)roundf(_param_synth_midi_ch));
+        }
+    } else if (idx == 14) { // Drum MIDI Ch
+        if (_midi) {
+            _midi->setDrumChannel((uint8_t)roundf(_param_drum_midi_ch));
         }
     }
+}
+
+void System::updateDrumEngine() {
+    amy_event e = amy_default_event();
+    e.reset_osc = RESET_PATCH;
+    e.patch_number = 1025;
+    amy_add_event(&e);
+
+    e = amy_default_event();
+    e.patch_number = 1025;
+    e.wave = PCM;
+    e.preset = 1;
+    amy_add_event(&e);
+
+    e = amy_default_event();
+    e.synth = 10;
+    e.patch_number = 1025;
+    e.num_voices = 6;
+    e.volume = (_param_drum_vol / 100.0f) * (_param_drum_drive / 2.0f);
+    e.synth_flags = _SYNTH_FLAGS_MIDI_DRUMS | _SYNTH_FLAGS_IGNORE_NOTE_OFFS;
+    amy_add_event(&e);
 }
 
 void System::switchInstrument(uint8_t index) {
@@ -269,30 +332,13 @@ void System::switchInstrument(uint8_t index) {
     // Reset AMY oscillators synchronously to guarantee a clean slate
     amy_reset_oscs();
 
+    // Start active melodic synth on Channel 1
     if (_instruments[_currentInstrument]) {
         _instruments[_currentInstrument]->start();
     }
 
     // Always maintain background multi-timbral Drum Synth on MIDI Channel 10
-    if (_currentInstrument != INST_DRUMS) {
-        amy_event e = amy_default_event();
-        e.reset_osc = RESET_PATCH;
-        e.patch_number = 1025;
-        amy_add_event(&e);
-
-        e = amy_default_event();
-        e.patch_number = 1025;
-        e.wave = PCM;
-        e.preset = 1;
-        amy_add_event(&e);
-
-        e = amy_default_event();
-        e.synth = 10;
-        e.patch_number = 1025;
-        e.num_voices = 6;
-        e.synth_flags = _SYNTH_FLAGS_MIDI_DRUMS | _SYNTH_FLAGS_IGNORE_NOTE_OFFS;
-        amy_add_event(&e);
-    }
+    updateDrumEngine();
 
     updateTabParams();
     _selectedParam = 0;

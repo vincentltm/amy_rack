@@ -1,17 +1,18 @@
 #pragma once
 // =============================================================================
-// ParamDefs.h — Tabbed Parameter Descriptors with 5 Modular Tabs
+// ParamDefs.h — Tabbed Parameter Descriptors with 6 Modular Tabs
 // =============================================================================
 
 #include <Arduino.h>
 
 enum TabId : uint8_t {
-    TAB_MAIN  = 0, // Engine, Patch, Voice Mode, Glide, Volume
+    TAB_MAIN  = 0, // Synth, Patch, Drums, Synth Vol, Drum Vol
     TAB_SYNTH = 1, // Engine specific controls (DCO, Waves, Trim, Gain)
-    TAB_ENV   = 2, // Filter & Envelope (Cutoff, Res, ADSR, LFO)
-    TAB_FX    = 3, // Effects (Chorus, Reverb, Delay)
-    TAB_MIDI  = 4, // MIDI Channel, CV I/O Routing & Keyboard Monitor
-    TAB_COUNT = 5
+    TAB_DRUM  = 2, // Drum Machine (Kits, Tuning, Drive, Volume)
+    TAB_ENV   = 3, // Filter & Envelope (Cutoff, Res, ADSR, LFO)
+    TAB_FX    = 4, // Effects (Chorus, Reverb, Delay)
+    TAB_MIDI  = 5, // MIDI Channels (Synth Ch, Drum Ch) & CV Routing
+    TAB_COUNT = 6
 };
 
 struct ParamDescriptor {
@@ -70,21 +71,23 @@ struct ParamDescriptor {
     }
 };
 
-// Helper macros
-#define PARAM_MS(name, min, max, step, ptr, tab) \
-    { name, "ms", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, tab, nullptr, 0 }
+#define PARAM_FLOAT(name, unit, minV, maxV, stepVal, ptr, tabId) \
+    ParamDescriptor{ name, unit, minV, maxV, stepVal, (stepVal)*5.0f, ptr, false, tabId, nullptr, 0 }
 
-#define PARAM_HZ(name, min, max, step, ptr, tab) \
-    { name, "Hz", (float)(min), (float)(max), (float)(step), (float)(step) * 10.0f, ptr, ((step) >= 1.0f), tab, nullptr, 0 }
+#define PARAM_INT(name, unit, minV, maxV, ptr, tabId) \
+    ParamDescriptor{ name, unit, (float)(minV), (float)(maxV), 1.0f, 5.0f, ptr, true, tabId, nullptr, 0 }
 
-#define PARAM_PCT(name, min, max, step, ptr, tab) \
-    { name, "%", (float)(min), (float)(max), (float)(step), (float)(step) * 5.0f, ptr, true, tab, nullptr, 0 }
+#define PARAM_INT_STEP(name, unit, minV, maxV, stepVal, ptr, tabId) \
+    ParamDescriptor{ name, unit, (float)(minV), (float)(maxV), (float)(stepVal), (float)((stepVal)*5), ptr, true, tabId, nullptr, 0 }
 
-#define PARAM_FLOAT(name, unit, min, max, step, ptr, tab) \
-    { name, unit, min, max, step, (step) * 10.0f, ptr, false, tab, nullptr, 0 }
+#define PARAM_HZ(name, minV, maxV, stepVal, ptr, tabId) \
+    ParamDescriptor{ name, "Hz", (float)(minV), (float)(maxV), (float)(stepVal), (float)((stepVal)*5), ptr, true, tabId, nullptr, 0 }
 
-#define PARAM_INT(name, unit, min, max, ptr, tab) \
-    { name, unit, (float)(min), (float)(max), 1.0f, 10.0f, ptr, true, tab, nullptr, 0 }
+#define PARAM_MS(name, minV, maxV, stepVal, ptr, tabId) \
+    ParamDescriptor{ name, "ms", (float)(minV), (float)(maxV), (float)(stepVal), (float)((stepVal)*5), ptr, true, tabId, nullptr, 0 }
 
-#define PARAM_ENUM(name, maxIdx, ptr, enumArray, tab) \
-    { name, "", 0.0f, (float)(maxIdx), 1.0f, 1.0f, ptr, true, tab, enumArray, (uint8_t)((maxIdx) + 1) }
+#define PARAM_PCT(name, minV, maxV, stepVal, ptr, tabId) \
+    ParamDescriptor{ name, "%", minV, maxV, stepVal, (stepVal)*5.0f, ptr, true, tabId, nullptr, 0 }
+
+#define PARAM_ENUM(name, count, ptr, namesArray, tabId) \
+    ParamDescriptor{ name, "", 0.0f, (float)((count) - 1), 1.0f, 1.0f, ptr, true, tabId, namesArray, (uint8_t)(count) }

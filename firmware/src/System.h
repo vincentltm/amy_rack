@@ -1,6 +1,6 @@
 #pragma once
 // =============================================================================
-// System.h — Tabbed Architecture with Master Overview on MAIN and MIDI Tab
+// System.h — Unified Architecture with Dedicated DRUM Tab and Multi-Timbral Control
 // =============================================================================
 
 #include <Arduino.h>
@@ -13,7 +13,7 @@ class CVManager;
 class MidiManager;
 
 enum class NavState : uint8_t {
-    TAB_SELECT   = 0, // Turning switches MAIN | SYNTH | ENV | FX | MIDI
+    TAB_SELECT   = 0, // Turning switches MAIN | SYNTH | DRUM | ENV | FX | MIDI
     PARAM_SELECT = 1, // Turning scrolls settings in active tab
     PARAM_EDIT   = 2  // Turning edits highlighted setting
 };
@@ -39,6 +39,7 @@ public:
     const ParamDescriptor* getTabParamDescriptor(uint8_t idx) const;
 
     void switchInstrument(uint8_t index);
+    void updateDrumEngine();
 
 private:
     Display      *_display  = nullptr;
@@ -53,15 +54,22 @@ private:
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
-    // Master System params
-    float _param_engine   = (float)DEFAULT_INSTRUMENT;
-    float _param_patch    = 0.0f;
-    float _param_volume   = 85.0f; // 0 - 100%
-    float _param_midi_ch  = 0.0f;  // 0 = Ch 1, 15 = Ch 16, 16 = Omni
-    float _param_cv1      = 0.0f;  // 0 = V/Oct, 1 = Cutoff, 2 = Vol, 3 = Off
-    float _param_cv2      = 0.0f;  // 0 = Gate, 1 = ModWhl, 2 = Res, 3 = Off
+    // Master & Drum System params
+    float _param_engine        = (float)DEFAULT_INSTRUMENT;
+    float _param_patch         = 0.0f;
+    float _param_synth_vol     = 85.0f; // 0 - 100%
+    float _param_drum_kit      = 0.0f;  // 0=808 Classic, 1=Electro, 2=Percussion, 3=Sub Boom
+    float _param_drum_vol      = 85.0f; // 0 - 100%
+    float _param_kick_tune     = 0.0f;  // -12 to +12 semitones
+    float _param_snare_tune    = 0.0f;  // -12 to +12 semitones
+    float _param_tom_tune      = 0.0f;  // -12 to +12 semitones
+    float _param_drum_drive    = 2.0f;  // 0.5 to 5.0
+    float _param_synth_midi_ch = 0.0f;  // 0 = Ch 1, 15 = Ch 16, 16 = Omni
+    float _param_drum_midi_ch  = 9.0f;  // 9 = Ch 10
+    float _param_cv1           = 0.0f;  // 0 = V/Oct, 1 = Cutoff, 2 = Vol, 3 = Off
+    float _param_cv2           = 0.0f;  // 0 = Gate, 1 = ModWhl, 2 = Res, 3 = Off
 
-    ParamDescriptor _masterParams[8];
+    ParamDescriptor _masterParams[20];
     uint8_t _masterParamCount = 0;
     void initMasterParams();
 

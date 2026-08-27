@@ -1,34 +1,45 @@
 #include "MidiManager.h"
-#include <Arduino.h>
+#include "amy.h"
+#include "amy_midi.h"
 
 extern "C" {
-    void juno_filter_midi_handler(uint8_t *bytes, uint16_t len, uint8_t is_sysex);
+    extern void juno_filter_midi_handler(uint8_t *bytes, uint16_t len, uint8_t is_sysex);
 }
 
 MidiManager* MidiManager::instance = nullptr;
 
-MidiManager::MidiManager(CVManager* cvManager) : cvManager(cvManager) {
+MidiManager::MidiManager() {
     instance = this;
-}
-
-void MidiManager::begin() {
-    instance = this;
-    amy_global.config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
 }
 
 void MidiManager::begin(CVManager& cv) {
-    this->cvManager = &cv;
-    instance = this;
-    amy_global.config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
+    cvManager = &cv;
+    listenChannel = 0; // Ch 1
+    drumChannel = 9;   // Ch 10
+    lastNote = 0;
+    lastChannel = 0;
+    noteActive = false;
+}
+
+void MidiManager::begin() {
+    listenChannel = 0;
+    drumChannel = 9;
+    lastNote = 0;
+    lastChannel = 0;
+    noteActive = false;
 }
 
 void MidiManager::update() {
-    // AMY handles MIDI polling internally
+    // AMY processes MIDI in the background
+}
+
+void MidiManager::installMidiHook(amy_config_t& config) {
+    instance = this;
+    config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
 }
 
 void MidiManager::setMidiInputHook(amy_config_t& config) {
-    instance = this;
-    config.amy_external_midi_input_hook = &MidiManager::onMidiReceived;
+    installMidiHook(config);
 }
 
 void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex) {
@@ -37,11 +48,11 @@ void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex)
     uint8_t status = bytes[0] & 0xF0;
     uint8_t channel = bytes[0] & 0x0F;
 
-    bool isDrumChannel = (channel == 9); // MIDI Ch 10 (0-indexed 9) is dedicated drum channel
+    bool isDrumMsg = (instance->drumChannel < 16 && channel == instance->drumChannel);
+    bool isSynthMsg = (instance->listenChannel >= 16 || channel == instance->listenChannel);
 
-    if (!isDrumChannel && instance->listenChannel < 16 && channel != instance->listenChannel) {
-        // Filter out if not on current channel (unless Omni mode)
-        return;
+    if (!isDrumMsg && !isSynthMsg) {
+        return; // Message is on an unmonitored MIDI channel
     }
 
     instance->lastChannel = channel;
@@ -53,14 +64,14 @@ void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex)
         if (velocity > 0) {
             instance->lastNote = note;
             instance->noteActive = true;
-            if (instance->cvManager) {
+            if (instance->cvManager && isSynthMsg) {
                 instance->cvManager->midiNoteToCVOut(note);
             }
         } else {
             // Velocity 0 is Note Off
             if (instance->lastNote == note) {
                 instance->noteActive = false;
-                if (instance->cvManager) {
+                if (instance->cvManager && isSynthMsg) {
                     instance->cvManager->midiNoteOffCVOut();
                 }
             }
@@ -69,7 +80,7 @@ void MidiManager::onMidiReceived(uint8_t* bytes, uint16_t len, uint8_t is_sysex)
         uint8_t note = bytes[1];
         if (instance->lastNote == note) {
             instance->noteActive = false;
-            if (instance->cvManager) {
+            if (instance->cvManager && isSynthMsg) {
                 instance->cvManager->midiNoteOffCVOut();
             }
         }

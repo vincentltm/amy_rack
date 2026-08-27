@@ -25,6 +25,7 @@ static const char* noteNames[] = {
 static const char* tabLabels[TAB_COUNT] = {
     "MAIN",
     "SYNTH",
+    "DRUM",
     "ENV",
     "FX",
     "MIDI"
@@ -169,6 +170,8 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
 void Display::drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t lastNote, bool gateActive) {
     if (activeTab == TabId::TAB_MIDI) {
         drawMasterKeyboard(lastNote, gateActive);
+    } else if (activeTab == TabId::TAB_DRUM) {
+        drawDrumPads();
     } else if (activeTab == TabId::TAB_MAIN || activeTab == TabId::TAB_SYNTH) {
         if (inst) inst->drawUI(u8g2);
     } else if (activeTab == TabId::TAB_ENV) {
@@ -178,6 +181,34 @@ void Display::drawVisualizerArea(Instrument* inst, TabId activeTab, uint8_t last
     }
     u8g2.setDrawColor(1);
     u8g2.drawHLine(0, 61, SCREEN_WIDTH);
+}
+
+void Display::drawDrumPads() {
+    const int GRID_X = 6;
+    const int GRID_Y = 16;
+    const int PAD_W = 27;
+    const int PAD_H = 19;
+    const int GAP_X = 2;
+    const int GAP_Y = 3;
+
+    static const char* labels[8] = {
+        "BD", "SD", "CH", "OH",
+        "CP", "TM", "CB", "MA"
+    };
+
+    for (int i = 0; i < 8; i++) {
+        int col = i % 4;
+        int row = i / 4;
+        int px = GRID_X + col * (PAD_W + GAP_X);
+        int py = GRID_Y + row * (PAD_H + GAP_Y);
+
+        u8g2.setDrawColor(1);
+        u8g2.drawRFrame(px, py, PAD_W, PAD_H, 2);
+        u8g2.setFont(u8g2_font_6x10_tr);
+        int tw = u8g2.getStrWidth(labels[i]);
+        u8g2.drawStr(px + (PAD_W - tw) / 2, py + 13, labels[i]);
+    }
+    u8g2.setDrawColor(1);
 }
 
 // -----------------------------------------------------------------------------
@@ -417,10 +448,10 @@ void Display::drawFXPlot(const SynthParams& p) {
 }
 
 void Display::drawTabBar(TabId activeTab, bool tabFocus) {
-    const uint8_t tabW = 22;
+    const uint8_t tabW = 19;
     const uint8_t tabH = 10;
     const uint8_t gap = 2;
-    const uint8_t startX = (SCREEN_WIDTH - (tabW * TAB_COUNT + gap * (TAB_COUNT - 1))) / 2; // (128 - (110 + 8)) / 2 = 5px
+    const uint8_t startX = 2;
     const uint8_t y = TAB_BAR_Y;
 
     u8g2.setFont(FONT_TAB);
