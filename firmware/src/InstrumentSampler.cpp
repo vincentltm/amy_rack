@@ -96,8 +96,10 @@ void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
         }
     } else if (paramIndex == 3) { // Gain
         // Applied directly in noteOn
-    } else if (paramIndex >= 4) {
-        sendAllParams();
+    } else if (paramIndex >= 12) {
+        configChorus();
+        configReverb();
+        configDelay();
     }
 
     needsUIRedraw = true;

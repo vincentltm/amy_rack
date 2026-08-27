@@ -241,60 +241,88 @@ void Display::drawFXPlot(const SynthParams& p) {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.setDrawColor(1);
 
-    // Left: Reverb Impulse & Decay Space
-    const int R_X = 2;
+    // 1. Left: Chorus Visualizer (x=2..40, w=39)
+    const int C_X = 2;
+    const int C_Y = 15;
+    const int C_W = 39;
+    const int C_H = 43;
+    const int C_MID = C_Y + C_H / 2 + 3;
+
+    u8g2.drawFrame(C_X, C_Y, C_W, C_H);
+    u8g2.drawStr(C_X + 2, C_Y + 7, "CHO");
+
+    float choLvl = p.chorus_pct / 100.0f;
+    int choAmp = (int)(choLvl * 10.0f) + 2;
+
+    int prevL = C_MID;
+    int prevR = C_MID;
+    for (int i = 0; i <= C_W - 6; i++) {
+        float angle = ((float)i / (float)(C_W - 6)) * 2.0f * 3.14159265f;
+        int curL = C_MID - (int)(sinf(angle) * choAmp);
+        int curR = C_MID - (int)(sinf(angle + 1.57f) * (choAmp * 0.75f));
+        int px = C_X + 3 + i;
+        if (i > 0) {
+            u8g2.drawLine(px - 1, prevL, px, curL);
+            u8g2.drawPixel(px, curR);
+        }
+        prevL = curL;
+        prevR = curR;
+    }
+
+    // 2. Middle: Reverb Visualizer (x=43..83, w=41)
+    const int R_X = 43;
     const int R_Y = 15;
-    const int R_W = 58;
+    const int R_W = 41;
     const int R_H = 43;
     const int R_BASE = R_Y + R_H - 3;
 
     u8g2.drawFrame(R_X, R_Y, R_W, R_H);
-    u8g2.drawStr(R_X + 3, R_Y + 7, "REVERB");
+    u8g2.drawStr(R_X + 2, R_Y + 7, "REV");
     u8g2.drawHLine(R_X + 3, R_BASE, R_W - 6);
 
     float revLevel = p.reverb_pct / 100.0f;
     float damp = 1.0f - (p.reverb_damping / 100.0f * 0.5f);
-    int maxH = (int)(revLevel * 22.0f) + 3;
+    int maxH = (int)(revLevel * 18.0f) + 2;
 
-    int impulses[] = { (int)(maxH * 0.95f), (int)(maxH * 0.8f), (int)(maxH * 0.7f), (int)(maxH * 0.6f) };
-    for (int i = 0; i < 4; i++) {
-        int ix = R_X + 6 + i * 4;
+    int impulses[] = { (int)(maxH * 0.95f), (int)(maxH * 0.75f), (int)(maxH * 0.6f) };
+    for (int i = 0; i < 3; i++) {
+        int ix = R_X + 5 + i * 3;
         u8g2.drawVLine(ix, R_BASE - impulses[i], impulses[i]);
     }
 
-    int prevTailY = R_BASE - (int)(maxH * 0.55f);
-    for (int i = 0; i < R_W - 24; i++) {
-        float t = (float)i / (float)(R_W - 24);
-        float decay = expf(-t * (2.5f / damp));
-        int tailH = (int)(maxH * 0.55f * decay);
+    int prevTailY = R_BASE - (int)(maxH * 0.5f);
+    for (int i = 0; i < R_W - 16; i++) {
+        float t = (float)i / (float)(R_W - 16);
+        float decay = expf(-t * (2.8f / damp));
+        int tailH = (int)(maxH * 0.5f * decay);
         int curTailY = R_BASE - tailH;
-        int px = R_X + 22 + i;
+        int px = R_X + 14 + i;
         u8g2.drawLine(px - 1, prevTailY, px, curTailY);
-        if (i % 3 == 0 && tailH > 2) {
+        if (i % 2 == 0 && tailH > 2) {
             u8g2.drawVLine(px, curTailY, tailH);
         }
         prevTailY = curTailY;
     }
 
-    // Right: Delay Pulse Train
-    const int D_X = 64;
+    // 3. Right: Delay Pulse Train (x=86..126, w=41)
+    const int D_X = 86;
     const int D_Y = 15;
-    const int D_W = 62;
+    const int D_W = 40;
     const int D_H = 43;
     const int D_BASE = D_Y + D_H - 3;
 
     u8g2.drawFrame(D_X, D_Y, D_W, D_H);
-    u8g2.drawStr(D_X + 3, D_Y + 7, "DELAY");
-    u8g2.drawHLine(D_X + 4, D_BASE, D_W - 8);
+    u8g2.drawStr(D_X + 2, D_Y + 7, "DLY");
+    u8g2.drawHLine(D_X + 3, D_BASE, D_W - 6);
 
     float mix = p.delay_mix_pct / 100.0f;
     float fb  = p.delay_feedback / 100.0f;
-    int spacing = (int)((p.delay_time_ms / 1500.0f) * 14.0f) + 6;
+    int spacing = (int)((p.delay_time_ms / 1500.0f) * 10.0f) + 5;
 
-    float amp = 24.0f * (mix > 0.05f ? mix : 0.2f);
-    for (int i = 0; i < 5; i++) {
-        int tx = D_X + 6 + i * spacing;
-        if (tx >= D_X + D_W - 4) break;
+    float amp = 20.0f * (mix > 0.05f ? mix : 0.2f);
+    for (int i = 0; i < 4; i++) {
+        int tx = D_X + 5 + i * spacing;
+        if (tx >= D_X + D_W - 3) break;
         int pulseH = (int)amp;
         if (pulseH > 0) {
             u8g2.drawVLine(tx, D_BASE - pulseH, pulseH);

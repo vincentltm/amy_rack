@@ -155,6 +155,7 @@ void InstrumentDX7::drawUI(U8G2 &u8g2) {
 void InstrumentDX7::onParamChanged(uint8_t paramIndex) {
     sendAdsr();
     sendFilter();
+    configChorus();
     configReverb();
     configDelay();
     needsUIRedraw = true;

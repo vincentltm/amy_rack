@@ -1,5 +1,13 @@
 #include "InstrumentPiano.h"
 
+static const char* pianoPatchNames[] = {
+    "Additive Grand",
+    "Electric Piano",
+    "Vibraphone",
+    "Church Organ",
+    "Marimba"
+};
+
 InstrumentPiano::InstrumentPiano() {
     _instrumentName = "Piano";
     _instrumentShortName = "PIANO";
@@ -11,10 +19,28 @@ void InstrumentPiano::init() {
 
 void InstrumentPiano::start() {
     isActive = true;
+
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
-    e.num_voices = 8;
-    e.patch_number = 0; // Standard PCM Piano
+
+    if (_currentPatch == 0) {
+        // AMY Additive Partials Grand Piano (Patch 256: 24 harmonics per voice)
+        e.num_voices = 4;
+        e.patch_number = 256;
+    } else if (_currentPatch == 1) {
+        e.num_voices = 6;
+        e.patch_number = 11; // E.Piano 1
+    } else if (_currentPatch == 2) {
+        e.num_voices = 6;
+        e.patch_number = 15; // Vibe 1
+    } else if (_currentPatch == 3) {
+        e.num_voices = 6;
+        e.patch_number = 17; // Pipe Organ
+    } else {
+        e.num_voices = 6;
+        e.patch_number = 16; // Marimba
+    }
+
     amy_add_event(&e);
 
     sendAllParams();
@@ -29,10 +55,51 @@ void InstrumentPiano::stop() {
     isActive = false;
 }
 
+void InstrumentPiano::setPatch(int index) {
+    if (index < 0) index = 4;
+    if (index > 4) index = 0;
+    _currentPatch = index;
+    start();
+}
+
+const char *InstrumentPiano::getPatchName(int idx) const {
+    if (idx >= 0 && idx < 5) return pianoPatchNames[idx];
+    return "";
+}
+
 void InstrumentPiano::drawUI(U8G2 &u8g2) {
-    u8g2.setFont(u8g2_font_6x10_tr);
-    u8g2.setDrawColor(1);
-    u8g2.drawStr(12, 32, "Acoustic Grand Piano");
     u8g2.setFont(u8g2_font_5x7_tr);
-    u8g2.drawStr(12, 48, "AMY Multi-Sampled PCM");
+    u8g2.setDrawColor(1);
+
+    if (_currentPatch == 0) {
+        u8g2.drawStr(8, 23, "ADDITIVE SPECTRAL SYNTH");
+    } else {
+        u8g2.drawStr(8, 23, "ACOUSTIC KEYBOARD");
+    }
+
+    // Draw 14 white piano keys across x=8..120, y=26..58 (height 32px)
+    const int startX = 8;
+    const int startY = 26;
+    const int keyW = 8;
+    const int whiteKeyH = 31;
+    const int blackKeyH = 18;
+    const int blackKeyW = 5;
+
+    for (int i = 0; i < 14; i++) {
+        u8g2.drawFrame(startX + i * keyW, startY, keyW + 1, whiteKeyH);
+    }
+
+    // Draw black keys (pattern: 2, gap, 3, gap, 2, gap, 3)
+    const int blackKeyOffsets[] = {
+        1, 2,      // C#, D#
+        4, 5, 6,   // F#, G#, A#
+        8, 9,      // C#, D#
+        11, 12, 13 // F#, G#, A#
+    };
+
+    for (int i = 0; i < 10; i++) {
+        int k = blackKeyOffsets[i];
+        int bx = startX + k * keyW - (blackKeyW / 2);
+        u8g2.drawBox(bx, startY, blackKeyW, blackKeyH);
+    }
 }

@@ -100,6 +100,7 @@ void InstrumentJuno::onParamChanged(uint8_t paramIndex) {
     else if (paramIndex == 8) { updateLfo(); }
     else if (paramIndex >= 9 && paramIndex <= 12) { updateAdsr(); }
     else if (paramIndex >= 13) {
+        configChorus();
         configReverb();
         configDelay();
     }
