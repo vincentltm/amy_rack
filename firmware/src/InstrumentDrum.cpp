@@ -42,11 +42,9 @@ void InstrumentDrum::start() {
 
 void InstrumentDrum::stop() {
     amy_event e = amy_default_event();
+    e.synth = getSynthChannel();
     e.velocity = 0.0f;
-    for (int i = 0; i < DRUM_VOICES; i++) {
-        e.osc = _voiceOscs[i];
-        amy_add_event(&e);
-    }
+    amy_add_event(&e);
     isActive = false;
 }
 
@@ -96,15 +94,26 @@ void InstrumentDrum::onParamChanged(uint8_t paramIndex) {
 }
 
 void InstrumentDrum::setupSynthVoices() {
-    for (int i = 0; i < DRUM_VOICES; i++) {
-        amy_event e = amy_default_event();
-        e.osc = _voiceOscs[i];
-        e.wave = PCM;
-        e.preset = 1; // Default Kick
-        e.velocity = 0.0f;
-        amy_add_event(&e);
-    }
-    sendAllParams();
+    amy_event e = amy_default_event();
+    e.reset_osc = RESET_PATCH;
+    e.patch_number = 1025;
+    amy_add_event(&e);
+
+    e = amy_default_event();
+    e.patch_number = 1025;
+    e.wave = PCM;
+    e.preset = 1;
+    amy_add_event(&e);
+
+    e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.patch_number = 1025;
+    e.num_voices = 8;
+    amy_add_event(&e);
+
+    configChorus();
+    configReverb();
+    configDelay();
 }
 
 void InstrumentDrum::triggerDrum(uint8_t preset, uint8_t pitch, float velocity, uint8_t padIdx) {
@@ -112,11 +121,8 @@ void InstrumentDrum::triggerDrum(uint8_t preset, uint8_t pitch, float velocity, 
         _padFlashTime[padIdx] = millis();
     }
 
-    uint8_t voiceOsc = _voiceOscs[_currentVoice];
-    _currentVoice = (_currentVoice + 1) % DRUM_VOICES;
-
     amy_event e = amy_default_event();
-    e.osc = voiceOsc;
+    e.synth = getSynthChannel();
     e.wave = PCM;
     e.preset = preset;
     e.midi_note = pitch;
