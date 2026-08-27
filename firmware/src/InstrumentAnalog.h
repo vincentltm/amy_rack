@@ -34,6 +34,7 @@ private:
     void updateOsc2Wave();
     void updateOscDetune();
     void sendAdsr() override;
+    void sendFilter() override;
     void updateOscBalance();
     void configNoise();
     void configLfo();

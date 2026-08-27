@@ -36,8 +36,7 @@ struct ParamDescriptor {
     }
 
     void adjust(int delta, bool accelerated = false) const {
-        float s = accelerated ? coarseStep : step;
-        setValue(*valuePtr + delta * s);
+        setValue(*valuePtr + delta * step);
     }
 
     void formatValue(char *buf, size_t bufLen) const {

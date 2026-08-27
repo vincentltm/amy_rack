@@ -45,6 +45,15 @@ void InstrumentJuno::start() {
 
     state.loadFromSysex(patch);
 
+    // Sync base params for ENV dynamic visualizer
+    params.cutoff = 50.0f + powf(state.vcf_freq / 100.0f, 2.0f) * 8000.0f;
+    params.resonance = 0.7f + (state.vcf_res / 100.0f) * 4.3f;
+    params.attack_ms = state.env_a_ms;
+    params.decay_ms = state.env_d_ms;
+    params.sustain_pct = state.env_s_pct;
+    params.release_ms = state.env_r_ms;
+    params.lfo_freq_hz = state.lfo_rate;
+
     updateOscDuty(JUNO_OSC_PWM);
     updateOscAmps(JUNO_OSC_PWM);
     updateOscAmps(JUNO_OSC_SAW);

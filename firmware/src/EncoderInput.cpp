@@ -12,14 +12,11 @@ void EncoderInput::begin() {
 }
 
 void EncoderInput::update() {
-    // 1. Read encoder rotation
+    // 1. Read encoder rotation (clean linear delta)
     int32_t currentPosition = seesaw.getEncoderPosition();
     int32_t diff = currentPosition - lastPosition;
     
     if (diff != 0) {
-        if (abs(diff) >= ENCODER_ACCEL_THRESHOLD) {
-            diff *= ENCODER_ACCEL_FACTOR;
-        }
         currentDelta += diff;
         lastPosition = currentPosition;
     }

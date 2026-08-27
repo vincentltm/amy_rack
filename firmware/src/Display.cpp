@@ -241,26 +241,39 @@ void Display::drawFXPlot(const SynthParams& p) {
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.setDrawColor(1);
 
-    // Left: Reverb Room Space
+    // Left: Reverb Impulse & Decay Space
     const int R_X = 2;
     const int R_Y = 15;
     const int R_W = 58;
     const int R_H = 43;
+    const int R_BASE = R_Y + R_H - 3;
 
     u8g2.drawFrame(R_X, R_Y, R_W, R_H);
     u8g2.drawStr(R_X + 3, R_Y + 7, "REVERB");
+    u8g2.drawHLine(R_X + 3, R_BASE, R_W - 6);
 
-    u8g2.drawFrame(R_X + 8, R_Y + 12, R_W - 16, R_H - 18);
-    u8g2.drawLine(R_X, R_Y, R_X + 8, R_Y + 12);
-    u8g2.drawLine(R_X + R_W, R_Y, R_X + R_W - 8, R_Y + 12);
-    u8g2.drawLine(R_X, R_Y + R_H, R_X + 8, R_Y + R_H - 6);
-    u8g2.drawLine(R_X + R_W, R_Y + R_H, R_X + R_W - 8, R_Y + R_H - 6);
+    float revLevel = p.reverb_pct / 100.0f;
+    float damp = 1.0f - (p.reverb_damping / 100.0f * 0.5f);
+    int maxH = (int)(revLevel * 22.0f) + 3;
 
-    int numParticles = (int)((p.reverb_pct / 100.0f) * 20.0f);
-    for (int i = 0; i < numParticles; i++) {
-        int px = R_X + 12 + ((i * 17) % (R_W - 24));
-        int py = R_Y + 16 + ((i * 23) % (R_H - 24));
-        u8g2.drawPixel(px, py);
+    int impulses[] = { (int)(maxH * 0.95f), (int)(maxH * 0.8f), (int)(maxH * 0.7f), (int)(maxH * 0.6f) };
+    for (int i = 0; i < 4; i++) {
+        int ix = R_X + 6 + i * 4;
+        u8g2.drawVLine(ix, R_BASE - impulses[i], impulses[i]);
+    }
+
+    int prevTailY = R_BASE - (int)(maxH * 0.55f);
+    for (int i = 0; i < R_W - 24; i++) {
+        float t = (float)i / (float)(R_W - 24);
+        float decay = expf(-t * (2.5f / damp));
+        int tailH = (int)(maxH * 0.55f * decay);
+        int curTailY = R_BASE - tailH;
+        int px = R_X + 22 + i;
+        u8g2.drawLine(px - 1, prevTailY, px, curTailY);
+        if (i % 3 == 0 && tailH > 2) {
+            u8g2.drawVLine(px, curTailY, tailH);
+        }
+        prevTailY = curTailY;
     }
 
     // Right: Delay Pulse Train
@@ -268,7 +281,7 @@ void Display::drawFXPlot(const SynthParams& p) {
     const int D_Y = 15;
     const int D_W = 62;
     const int D_H = 43;
-    const int D_BASE = D_Y + D_H - 4;
+    const int D_BASE = D_Y + D_H - 3;
 
     u8g2.drawFrame(D_X, D_Y, D_W, D_H);
     u8g2.drawStr(D_X + 3, D_Y + 7, "DELAY");
@@ -276,10 +289,10 @@ void Display::drawFXPlot(const SynthParams& p) {
 
     float mix = p.delay_mix_pct / 100.0f;
     float fb  = p.delay_feedback / 100.0f;
-    int spacing = (int)((p.delay_time_ms / 1500.0f) * 16.0f) + 6;
+    int spacing = (int)((p.delay_time_ms / 1500.0f) * 14.0f) + 6;
 
     float amp = 24.0f * (mix > 0.05f ? mix : 0.2f);
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         int tx = D_X + 6 + i * spacing;
         if (tx >= D_X + D_W - 4) break;
         int pulseH = (int)amp;
@@ -287,7 +300,7 @@ void Display::drawFXPlot(const SynthParams& p) {
             u8g2.drawVLine(tx, D_BASE - pulseH, pulseH);
             u8g2.drawDisc(tx, D_BASE - pulseH, 1);
         }
-        amp *= (0.3f + fb * 0.65f);
+        amp *= (0.25f + fb * 0.7f);
     }
 }
 

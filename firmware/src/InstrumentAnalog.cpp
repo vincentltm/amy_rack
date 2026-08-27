@@ -1,7 +1,14 @@
 #include "InstrumentAnalog.h"
 #include <cmath>
+#include <algorithm>
 
-static const char* waveNames[] = {"SINE", "PULSE", "SAW", "TRI", "NOISE"};
+static const char *waveNames[] = {
+    "SINE",
+    "PULSE",
+    "SAW",
+    "TRI",
+    "NOISE"
+};
 
 InstrumentAnalog::InstrumentAnalog() {
     _instrumentName = "Analog";
@@ -14,21 +21,19 @@ void InstrumentAnalog::init() {
     // Tab: SYNTH
     _analogParams[0] = PARAM_INT("Osc1 Wave", "", 0, 4,       &_osc1_wave_f,     TAB_SYNTH);
     _analogParams[1] = PARAM_INT("Osc2 Wave", "", 0, 4,       &_osc2_wave_f,     TAB_SYNTH);
-    _analogParams[2] = PARAM_PCT("Detune",    0.0f, 100.0f, 5.0f, &_osc2_detune_pct, TAB_SYNTH);
-    _analogParams[3] = PARAM_PCT("Balance",   0.0f, 100.0f, 5.0f, &_osc_balance_pct, TAB_SYNTH);
+    _analogParams[2] = PARAM_PCT("Detune",    0.0f, 100.0f, 2.0f, &_osc2_detune_pct, TAB_SYNTH);
+    _analogParams[3] = PARAM_PCT("Balance",   0.0f, 100.0f, 2.0f, &_osc_balance_pct, TAB_SYNTH);
 
     _analogParamCount = 4;
 
-    // Add Base Params (Filter, Envelope, FX)
     for (int i = 0; i < _baseParamCount; i++) {
-        _analogParams[_analogParamCount++] = _baseParams[i];
+        _analogParams[_analogParamCount + i] = _baseParams[i];
     }
 }
 
 void InstrumentAnalog::start() {
     isActive = true;
     setupSynthVoices();
-    needsUIRedraw = true;
 }
 
 void InstrumentAnalog::stop() {
@@ -42,36 +47,54 @@ void InstrumentAnalog::stop() {
 void InstrumentAnalog::drawWaveShape(U8G2 &u8g2, uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t waveType) {
     u8g2.drawFrame(x, y, w, h);
     int midY = y + h / 2;
+    int topY = y + 3;
+    int botY = y + h - 4;
     
     switch (waveType) {
-        case 0: // SINE
-            u8g2.drawCircle(x + w / 4, midY - 3, 4, U8G2_DRAW_UPPER_RIGHT | U8G2_DRAW_UPPER_LEFT);
-            u8g2.drawCircle(x + 3 * w / 4, midY + 3, 4, U8G2_DRAW_LOWER_RIGHT | U8G2_DRAW_LOWER_LEFT);
+        case 0: { // SINE - continuous smooth curve
+            int prevY = midY;
+            for (int i = 0; i <= w - 8; i++) {
+                float angle = ((float)i / (float)(w - 8)) * 2.0f * 3.14159265f;
+                int curY = midY - (int)(sinf(angle) * (h / 2 - 4));
+                if (i > 0) {
+                    u8g2.drawLine(x + 4 + i - 1, prevY, x + 4 + i, curY);
+                }
+                prevY = curY;
+            }
             break;
-        case 1: // PULSE
-            u8g2.drawVLine(x + 4, midY - 6, 12);
-            u8g2.drawHLine(x + 4, midY - 6, w / 2 - 4);
-            u8g2.drawVLine(x + w / 2, midY - 6, 12);
-            u8g2.drawHLine(x + w / 2, midY + 6, w / 2 - 4);
-            u8g2.drawVLine(x + w - 4, midY - 6, 12);
+        }
+        case 1: { // PULSE / SQUARE
+            int midX = x + w / 2;
+            u8g2.drawVLine(x + 4, topY, botY - topY + 1);
+            u8g2.drawHLine(x + 4, topY, midX - (x + 4));
+            u8g2.drawVLine(midX, topY, botY - topY + 1);
+            u8g2.drawHLine(midX, botY, (x + w - 4) - midX);
+            u8g2.drawVLine(x + w - 4, topY, botY - topY + 1);
             break;
-        case 2: // SAW
-            u8g2.drawLine(x + 4, midY + 6, x + w / 2, midY - 6);
-            u8g2.drawVLine(x + w / 2, midY - 6, 12);
-            u8g2.drawLine(x + w / 2, midY + 6, x + w - 4, midY - 6);
-            u8g2.drawVLine(x + w - 4, midY - 6, 12);
+        }
+        case 2: { // SAW
+            int midX = x + w / 2;
+            u8g2.drawLine(x + 4, botY, midX, topY);
+            u8g2.drawVLine(midX, topY, botY - topY + 1);
+            u8g2.drawLine(midX, botY, x + w - 4, topY);
+            u8g2.drawVLine(x + w - 4, topY, botY - topY + 1);
             break;
-        case 3: // TRI
-            u8g2.drawLine(x + 4, midY + 6, x + w / 4 + 2, midY - 6);
-            u8g2.drawLine(x + w / 4 + 2, midY - 6, x + 3 * w / 4 - 2, midY + 6);
-            u8g2.drawLine(x + 3 * w / 4 - 2, midY + 6, x + w - 4, midY - 6);
+        }
+        case 3: { // TRIANGLE
+            int q1X = x + 4 + (w - 8) / 4;
+            int q3X = x + 4 + 3 * (w - 8) / 4;
+            u8g2.drawLine(x + 4, midY, q1X, topY);
+            u8g2.drawLine(q1X, topY, q3X, botY);
+            u8g2.drawLine(q3X, botY, x + w - 4, midY);
             break;
-        default: // NOISE
-            for (int i = x + 4; i < x + w - 4; i += 3) {
-                int r = ((i * 17) % 12) - 6;
+        }
+        default: { // NOISE
+            for (int i = x + 4; i < x + w - 4; i += 2) {
+                int r = ((i * 37 + 11) % (h - 8)) - (h / 2 - 4);
                 u8g2.drawPixel(i, midY + r);
             }
             break;
+        }
     }
 }
 
@@ -133,46 +156,49 @@ void InstrumentAnalog::setupSynthVoices() {
 
     e = amy_default_event();
     e.patch_number = 1024;
-    e.oscs_per_voice = 4;
+    e.oscs_per_voice = 3;
     e.synth = getSynthChannel();
-    e.num_voices = 8;
+    e.num_voices = 6;
     amy_add_event(&e);
 
+    // Osc 1 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_1;
     e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc1_wave_f;
-    e.amp_coefs[0] = 0.5f; 
-    e.amp_coefs[1] = 1.0f; 
-    e.amp_coefs[2] = 1.0f; 
+    e.amp_coefs[COEF_CONST] = 0.5f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    e.amp_coefs[COEF_EG0] = 1.0f;
     e.chained_osc = OSC_2;
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
+    // Osc 2 - with ADSR via EG0
     e = amy_default_event();
     e.osc = OSC_2;
     e.synth = getSynthChannel();
     e.wave = (uint8_t)_osc2_wave_f;
-    e.amp_coefs[0] = 0.5f;
-    e.amp_coefs[1] = 1.0f;
-    e.amp_coefs[2] = 1.0f;
-    e.chained_osc = OSC_NOISE;
+    e.amp_coefs[COEF_CONST] = 0.5f;
+    e.amp_coefs[COEF_VEL] = 1.0f;
+    e.amp_coefs[COEF_EG0] = 1.0f;
+    e.chained_osc = OSC_LFO_FILTER;
     e.mod_source = OSC_LFO_FILTER;
     amy_add_event(&e);
 
-    e = amy_default_event();
-    e.osc = OSC_NOISE;
-    e.synth = getSynthChannel();
-    e.wave = NOISE;
-    e.amp_coefs[0] = (params.noise_pct / 100.0f) * 0.5f;
-    amy_add_event(&e);
-
+    // LFO Filter modulator
     e = amy_default_event();
     e.osc = OSC_LFO_FILTER;
     e.synth = getSynthChannel();
     e.wave = TRIANGLE;
-    e.freq_coefs[0] = params.lfo_freq_hz;
-    e.amp_coefs[0] = (params.lfo_depth_pct / 100.0f) * 2.0f + 0.001f;
+    e.freq_coefs[COEF_CONST] = params.lfo_freq_hz;
+    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f) * 2.0f;
+    e.freq_coefs[COEF_NOTE] = 0;
+    e.amp_coefs[COEF_NOTE] = 0;
+    amy_add_event(&e);
+
+    e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.filter_freq_coefs[COEF_MOD] = 1.0f;
     amy_add_event(&e);
 
     updateOscDetune();
@@ -202,6 +228,15 @@ void InstrumentAnalog::sendAdsr() {
     amy_add_event(&e);
 }
 
+void InstrumentAnalog::sendFilter() {
+    amy_event e = amy_default_event();
+    e.synth = getSynthChannel();
+    e.filter_freq_coefs[COEF_CONST] = params.cutoff;
+    e.resonance = params.resonance;
+    e.filter_type = 1; // 24dB / octave lowpass
+    amy_add_event(&e);
+}
+
 void InstrumentAnalog::updateOsc1Wave() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
@@ -219,67 +254,38 @@ void InstrumentAnalog::updateOsc2Wave() {
 }
 
 void InstrumentAnalog::updateOscDetune() {
-    const float DETUNE_DEADZONE = 0.03f;
-    float normDetune = _osc2_detune_pct / 100.0f;
-    const float HALF_RANGE = 0.5f - DETUNE_DEADZONE;
-    float octaves;
-
-    if (normDetune < 0.5f - DETUNE_DEADZONE) {
-        float t = normDetune / HALF_RANGE;
-        octaves = t - 1.0f;
-    } else if (normDetune > 0.5f + DETUNE_DEADZONE) {
-        float t = (normDetune - (0.5f + DETUNE_DEADZONE)) / HALF_RANGE;
-        octaves = t;
-    } else {
-        octaves = 0.0f;
-    }
-
-    float freq_mult = powf(2.0f, octaves);
-
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.osc = OSC_2;
-    e.freq_coefs[0] = freq_mult * 440.0f;
+    // Map detune to pitch ratio
+    float semitones = (_osc2_detune_pct / 100.0f) * 0.5f; // up to 50 cents detune
+    e.freq_coefs[COEF_NOTE] = powf(2.0f, semitones / 12.0f);
     amy_add_event(&e);
 }
 
 void InstrumentAnalog::updateOscBalance() {
     float bal = _osc_balance_pct / 100.0f;
-    float amp1, amp2;
-    if (bal < 0.5f) {
-        amp1 = 1.0f;
-        amp2 = bal * 2.0f;
-    } else {
-        amp1 = (1.0f - bal) * 2.0f;
-        amp2 = 1.0f;
-    }
+    float amp1 = (1.0f - bal) * 0.8f;
+    float amp2 = bal * 0.8f;
 
-    amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.osc = OSC_1;
-    e.amp_coefs[0] = amp1 * 0.5f;
-    amy_add_event(&e);
+    amy_event e1 = amy_default_event();
+    e1.synth = getSynthChannel();
+    e1.osc = OSC_1;
+    e1.amp_coefs[COEF_CONST] = amp1;
+    amy_add_event(&e1);
 
-    e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.osc = OSC_2;
-    e.amp_coefs[0] = amp2 * 0.5f;
-    amy_add_event(&e);
-}
-
-void InstrumentAnalog::configNoise() {
-    amy_event e = amy_default_event();
-    e.synth = getSynthChannel();
-    e.osc = OSC_NOISE;
-    e.amp_coefs[0] = (params.noise_pct / 100.0f) * 0.5f;
-    amy_add_event(&e);
+    amy_event e2 = amy_default_event();
+    e2.synth = getSynthChannel();
+    e2.osc = OSC_2;
+    e2.amp_coefs[COEF_CONST] = amp2;
+    amy_add_event(&e2);
 }
 
 void InstrumentAnalog::configLfo() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.osc = OSC_LFO_FILTER;
-    e.freq_coefs[0] = params.lfo_freq_hz;
-    e.amp_coefs[0] = (params.lfo_depth_pct / 100.0f) * 2.0f + 0.001f;
+    e.freq_coefs[COEF_CONST] = params.lfo_freq_hz;
+    e.amp_coefs[COEF_CONST] = (params.lfo_depth_pct / 100.0f) * 2.0f;
     amy_add_event(&e);
 }
