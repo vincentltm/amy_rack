@@ -4,7 +4,7 @@
 #include <freertos/task.h>
 
 #define SAMPLER_SAMPLE_RATE     22050
-#define SAMPLER_MAX_SAMPLES     (SAMPLER_SAMPLE_RATE * 3) // 3 seconds max (132 KB)
+#define SAMPLER_MAX_SAMPLES     (SAMPLER_SAMPLE_RATE * 3) // 3 seconds max
 
 class InstrumentSampler : public Instrument {
 public:
@@ -24,15 +24,16 @@ public:
     const ParamDescriptor *getParams() const override { return _samplerParams; }
     uint8_t getParamCount() const override { return _samplerParamCount; }
 
-    int getPatchCount() const override { return 1; }
-    int getCurrentPatch() const override { return 0; }
-    void setPatch(int index) override {}
-    const char *getPatchName(int idx) const override { return "Default Sample"; }
+    int getPatchCount() const override { return 12; }
+    int getCurrentPatch() const override { return _currentPatch; }
+    void setPatch(int index) override;
+    const char *getPatchName(int idx) const override;
 
     void startRecording();
     void stopRecording();
 
 private:
+    int _currentPatch = 0;
     int16_t *_record_buffer = nullptr;
     volatile bool isRecording = false;
     volatile uint32_t sample_index = 0;
@@ -42,7 +43,7 @@ private:
     TaskHandle_t _recordingTaskHandle = nullptr;
     volatile bool recordingFinished = false;
 
-    uint16_t _amy_preset_num = 1000;
+    uint16_t _amy_user_preset = 1000;
 
     // Parameters
     float _param_record = 0.0f;     // 0 = idle, 1 = record

@@ -3,6 +3,25 @@
 #include <algorithm>
 #include <cmath>
 
+static const char* samplerPatchNames[12] = {
+    "808 Kick",
+    "808 Snare",
+    "808 Closed Hat",
+    "808 Open Hat",
+    "808 Hand Clap",
+    "808 Low Tom",
+    "808 Cowbell",
+    "808 Maraca",
+    "808 Snare Hi",
+    "808 Snare Fat",
+    "808 Snare Tight",
+    "Live Recorder"
+};
+
+static const uint16_t romPresetMap[11] = {
+    1, 2, 6, 7, 9, 8, 10, 0, 3, 4, 5
+};
+
 InstrumentSampler::InstrumentSampler() {
     _instrumentName = "Sampler";
     _instrumentShortName = "SMPL";
@@ -16,16 +35,15 @@ InstrumentSampler::~InstrumentSampler() {
 }
 
 void InstrumentSampler::init() {
-    // Allocate 3.0-second buffer in PSRAM (or heap fallback)
     _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
     if (!_record_buffer) {
         _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
     }
 
-    _amy_preset_num = 1000;
+    _amy_user_preset = 1000;
 
     if (_record_buffer) {
-        original_length = SAMPLER_SAMPLE_RATE; // 1 second default tone
+        original_length = SAMPLER_SAMPLE_RATE;
         sample_length = original_length;
         _trim_start_samples = 0;
         _trim_end_samples = original_length;
@@ -36,7 +54,7 @@ void InstrumentSampler::init() {
             _record_buffer[i] = (int16_t)(s * 20000.0f * expf(-t * 2.5f));
         }
 
-        int16_t *amy_buf = pcm_load(_amy_preset_num, original_length, SAMPLER_SAMPLE_RATE, 1, 60, 0, 0);
+        int16_t *amy_buf = pcm_load(_amy_user_preset, original_length, SAMPLER_SAMPLE_RATE, 1, 60, 0, 0);
         if (amy_buf) {
             memcpy(amy_buf, _record_buffer, original_length * sizeof(int16_t));
         }
@@ -75,6 +93,19 @@ void InstrumentSampler::stop() {
     isActive = false;
 }
 
+void InstrumentSampler::setPatch(int index) {
+    if (index < 0) index = 11;
+    if (index > 11) index = 0;
+    _currentPatch = index;
+    setupSynthVoices();
+    needsUIRedraw = true;
+}
+
+const char *InstrumentSampler::getPatchName(int idx) const {
+    if (idx >= 0 && idx < 12) return samplerPatchNames[idx];
+    return "";
+}
+
 void InstrumentSampler::update() {
     if (recordingFinished && !isRecording) {
         recordingFinished = false;
@@ -83,7 +114,7 @@ void InstrumentSampler::update() {
 }
 
 void InstrumentSampler::noteOn(uint8_t note, float velocity) {
-    if (!isActive || isRecording || sample_length == 0) return;
+    if (!isActive || isRecording) return;
 
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
@@ -114,7 +145,7 @@ void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
             reloadTrimmedSample();
         }
     } else if (paramIndex == 3) { // Gain
-        // Applied directly in noteOn
+        // Applied in noteOn
     } else if (paramIndex >= 12) {
         configChorus();
         configReverb();
@@ -127,6 +158,7 @@ void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
 void InstrumentSampler::startRecording() {
     if (isRecording || !_record_buffer) return;
 
+    _currentPatch = 11; // Switch to User Live Recorder
     isRecording = true;
     _param_record = 1.0f;
     sample_index = 0;
@@ -201,7 +233,7 @@ void InstrumentSampler::reloadTrimmedSample() {
     uint32_t trimmed_len = _trim_end_samples - _trim_start_samples;
 
     int16_t *amy_buf = pcm_load(
-        _amy_preset_num,
+        _amy_user_preset,
         trimmed_len,
         SAMPLER_SAMPLE_RATE,
         1,
@@ -217,12 +249,29 @@ void InstrumentSampler::reloadTrimmedSample() {
 }
 
 void InstrumentSampler::setupSynthVoices() {
+    uint16_t presetNum = 1; // 808 Kick
+    if (_currentPatch == 11) {
+        presetNum = _amy_user_preset;
+    } else if (_currentPatch >= 0 && _currentPatch < 11) {
+        presetNum = romPresetMap[_currentPatch];
+    }
+
     amy_event e = amy_default_event();
+    e.reset_osc = RESET_PATCH;
+    e.patch_number = 1025;
+    amy_add_event(&e);
+
+    char patchStr[32];
+    snprintf(patchStr, sizeof(patchStr), "v0w7p%d", presetNum);
+    e = amy_default_event();
+    e.patch_number = 1025;
+    patches_store_patch(&e, patchStr);
+    amy_add_event(&e);
+
+    e = amy_default_event();
     e.synth = getSynthChannel();
+    e.patch_number = 1025;
     e.num_voices = 6;
-    e.wave = PCM;
-    e.preset = _amy_preset_num;
-    e.amp_coefs[0] = _param_gain;
     amy_add_event(&e);
 
     sendAllParams();
@@ -242,13 +291,16 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         snprintf(buf, sizeof(buf), "%.1f / 3.0s", (float)sample_index / SAMPLER_SAMPLE_RATE);
         u8g2.setFont(u8g2_font_5x7_tr);
         u8g2.drawStr(10, 56, buf);
-    } else if (original_length == 0 || !_record_buffer) {
-        u8g2.setFont(u8g2_font_6x10_tr);
+    } else if (_currentPatch < 11) {
+        u8g2.setFont(u8g2_font_7x14B_tr);
         u8g2.setDrawColor(1);
-        u8g2.drawStr(10, 32, "No Sample Loaded");
+        u8g2.drawStr(8, 28, "ROM PCM SAMPLE");
+
+        u8g2.setFont(u8g2_font_6x10_tr);
+        u8g2.drawStr(8, 44, samplerPatchNames[_currentPatch]);
+
         u8g2.setFont(u8g2_font_5x7_tr);
-        u8g2.drawStr(10, 46, "Select 'Record' in SYNTH tab");
-        u8g2.drawFrame(8, 50, 112, 8);
+        u8g2.drawStr(8, 56, "Polyphonic 6-Voice Sample");
     } else {
         const int WAVE_X = 4;
         const int WAVE_Y = 16;
