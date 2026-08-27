@@ -17,8 +17,8 @@ public:
 private:
     float _osc1_wave_f = 0.0f; // 0=Sine, 1=Pulse, 2=Saw, 3=Tri, 4=Noise
     float _osc2_wave_f = 2.0f; // Default Osc 2 = Saw
-    float _osc2_detune = 0.5f;
-    float _osc_balance = 0.5f;
+    float _osc2_detune_pct = 50.0f; // 0-100%
+    float _osc_balance_pct = 50.0f; // 0-100%
 
     ParamDescriptor _analogParams[MAX_PARAMS];
     uint8_t _analogParamCount = 0;

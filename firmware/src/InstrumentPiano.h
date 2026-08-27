@@ -3,14 +3,9 @@
 
 class InstrumentPiano : public Instrument {
 public:
-    InstrumentPiano() {
-        _instrumentName = "Piano";
-        _instrumentShortName = "Piano";
-    }
+    InstrumentPiano();
     void init() override;
     void start() override;
     void stop() override;
-
-    const ParamDescriptor *getParams() const override { return _baseParams; }
-    uint8_t getParamCount() const override { return _baseParamCount; }
+    void drawUI(U8G2 &u8g2) override;
 };

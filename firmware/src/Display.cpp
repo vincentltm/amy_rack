@@ -3,7 +3,6 @@
 #include "MidiManager.h"
 #include <cstring>
 
-// Helper to trim trailing spaces and newlines from strings
 static void cleanString(char* dest, const char* src, size_t maxLen) {
     if (!src) { dest[0] = '\0'; return; }
     size_t len = 0;
@@ -12,11 +11,22 @@ static void cleanString(char* dest, const char* src, size_t maxLen) {
         dest[len++] = *src++;
     }
     dest[len] = '\0';
-    // Trim trailing whitespace
     while (len > 0 && dest[len - 1] == ' ') {
         dest[--len] = '\0';
     }
 }
+
+static const char* catNames[] = {
+    "1. SYNTH CONTROLS",
+    "2. FILTER & ENV",
+    "3. EFFECTS (FX)"
+};
+
+static const char* catShortHeaders[] = {
+    "[ SYNTH SETTINGS ]",
+    "[ FILTER & ENV ]",
+    "[ FX SETTINGS ]"
+};
 
 Display::Display() : u8g2(U8G2_R0, U8X8_PIN_NONE, I2C_SCL_PIN, I2C_SDA_PIN) {
 }
@@ -50,28 +60,43 @@ void Display::update(System& sys, MidiManager& midi) {
         return;
     }
 
+    if (state == NavState::CATEGORY_SELECT) {
+        uint8_t catSel = sys.getSelectedCategory();
+        bool dirty = (navStateInt != lastNavState) || (catSel != lastCategory) || needsRedraw;
+        lastNavState = navStateInt;
+        lastCategory = catSel;
+
+        if (dirty) {
+            drawCategoryMenu(catSel);
+        }
+        return;
+    }
+
     lastNavState = navStateInt;
 
     Instrument* inst = sys.getActiveInstrument();
-    const ParamDescriptor* params = inst ? inst->getParams() : nullptr;
-    uint8_t paramCount = inst ? inst->getParamCount() : 0;
+    const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
+    uint8_t catIdx = sys.getSelectedCategory();
+    uint8_t filteredCount = sys.getFilteredParamCount();
     uint8_t midiCh = midi.getLastChannel();
     uint8_t lastNote = midi.getLastNote();
     bool gateActive = midi.isNoteActive();
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
 
     bool dirty = (inst != lastInst) || (selectedIdx != lastSelectedIdx) || 
-                 (editing != lastEditing) || (midiCh != lastMidiCh) || 
-                 (lastNote != this->lastNote) || (gateActive != lastGateActive) ||
-                 (currentPatch != lastPatch) || (inst && inst->needsUIRedraw) || needsRedraw;
+                 (editing != lastEditing) || (catIdx != lastCategory) ||
+                 (midiCh != lastMidiCh) || (lastNote != this->lastNote) || 
+                 (gateActive != lastGateActive) || (currentPatch != lastPatch) || 
+                 (inst && inst->needsUIRedraw) || needsRedraw;
 
     if (!dirty) return;
 
     lastInst = inst;
     lastSelectedIdx = selectedIdx;
     lastEditing = editing;
+    lastCategory = catIdx;
     lastMidiCh = midiCh;
     this->lastNote = lastNote;
     lastGateActive = gateActive;
@@ -86,8 +111,12 @@ void Display::update(System& sys, MidiManager& midi) {
         drawInstrumentUI(inst);
     }
     
-    if (params && paramCount > 0) {
-        drawParamList(params, paramCount, selectedIdx, editing);
+    if (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT) {
+        uint8_t filteredIndices[MAX_PARAMS];
+        for (uint8_t i = 0; i < filteredCount; i++) {
+            filteredIndices[i] = sys.getFilteredParamRealIndex(i);
+        }
+        drawFilteredParamList(allParams, filteredIndices, filteredCount, selectedIdx, editing, catIdx);
     }
     
     drawStatusBar(midiCh, lastNote, gateActive, navStateInt);
@@ -101,27 +130,25 @@ void Display::update(System& sys) {
 
     if (state == NavState::ENGINE_MENU) {
         uint8_t menuSel = sys.getMenuSelection();
-        bool dirty = (navStateInt != lastNavState) || (menuSel != lastMenuSel) || needsRedraw;
-        lastNavState = navStateInt;
-        lastMenuSel = menuSel;
-
-        if (dirty) {
-            const char* names[NUM_INSTRUMENTS];
-            for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
-                names[i] = sys.getInstrumentName(i);
-            }
-            drawInstrumentMenu(names, NUM_INSTRUMENTS, menuSel);
+        const char* names[NUM_INSTRUMENTS];
+        for (uint8_t i = 0; i < NUM_INSTRUMENTS; i++) {
+            names[i] = sys.getInstrumentName(i);
         }
+        drawInstrumentMenu(names, NUM_INSTRUMENTS, menuSel);
         return;
     }
 
-    lastNavState = navStateInt;
+    if (state == NavState::CATEGORY_SELECT) {
+        drawCategoryMenu(sys.getSelectedCategory());
+        return;
+    }
 
     Instrument* inst = sys.getActiveInstrument();
-    const ParamDescriptor* params = inst ? inst->getParams() : nullptr;
-    uint8_t paramCount = inst ? inst->getParamCount() : 0;
+    const ParamDescriptor* allParams = inst ? inst->getParams() : nullptr;
     uint8_t selectedIdx = sys.getSelectedParamIndex();
     bool editing = sys.isEditingParam();
+    uint8_t catIdx = sys.getSelectedCategory();
+    uint8_t filteredCount = sys.getFilteredParamCount();
     int currentPatch = inst ? inst->getCurrentPatch() : -1;
 
     u8g2.clearBuffer();
@@ -131,29 +158,15 @@ void Display::update(System& sys) {
         drawInstrumentUI(inst);
     }
     
-    if (params && paramCount > 0) {
-        drawParamList(params, paramCount, selectedIdx, editing);
+    if (state == NavState::PARAM_SELECT || state == NavState::PARAM_EDIT) {
+        uint8_t filteredIndices[MAX_PARAMS];
+        for (uint8_t i = 0; i < filteredCount; i++) {
+            filteredIndices[i] = sys.getFilteredParamRealIndex(i);
+        }
+        drawFilteredParamList(allParams, filteredIndices, filteredCount, selectedIdx, editing, catIdx);
     }
     
     drawStatusBar(0, 255, false, navStateInt);
-
-    u8g2.sendBuffer();
-}
-
-void Display::update(Instrument* inst, const ParamDescriptor* params, uint8_t paramCount, uint8_t selectedIdx, bool editing, uint8_t midiCh, uint8_t lastNote, bool gateActive) {
-    u8g2.clearBuffer();
-
-    int currentPatch = inst ? inst->getCurrentPatch() : -1;
-    if (inst) {
-        drawHeader(inst->getName(), inst->getPatchName(currentPatch), currentPatch);
-        drawInstrumentUI(inst);
-    }
-    
-    if (params && paramCount > 0) {
-        drawParamList(params, paramCount, selectedIdx, editing);
-    }
-    
-    drawStatusBar(midiCh, lastNote, gateActive, 0);
 
     u8g2.sendBuffer();
 }
@@ -162,12 +175,10 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
     u8g2.setFont(u8g2_font_7x14B_tr);
     u8g2.setDrawColor(1);
     
-    // Instrument Name on left (e.g. "JUNO", "DX7")
     if (instName) {
         u8g2.drawStr(0, 11, instName);
     }
     
-    // Clean and format patch name
     char cleanPatch[24];
     cleanString(cleanPatch, patchName, sizeof(cleanPatch));
     
@@ -175,7 +186,6 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
     if (cleanPatch[0] != '\0') {
         int w = u8g2.getStrWidth(cleanPatch);
         if (w > 80) {
-            // If too long, truncate
             cleanPatch[12] = '\0';
             w = u8g2.getStrWidth(cleanPatch);
         }
@@ -187,7 +197,6 @@ void Display::drawHeader(const char* instName, const char* patchName, int patchI
         u8g2.drawStr(SCREEN_WIDTH - w, 10, buf);
     }
     
-    // Header divider line
     u8g2.drawHLine(0, 14, SCREEN_WIDTH);
 }
 
@@ -197,8 +206,45 @@ void Display::drawInstrumentUI(Instrument* inst) {
     }
 }
 
-void Display::drawParamList(const ParamDescriptor* params, uint8_t count, uint8_t selectedIdx, bool editing) {
-    // Divider line above parameter list
+void Display::drawCategoryMenu(uint8_t selectedCat) {
+    u8g2.clearBuffer();
+    
+    // Header
+    u8g2.setFont(u8g2_font_6x10_tr);
+    u8g2.setDrawColor(1);
+    const char* title = "-- SETTINGS MENU --";
+    int tw = u8g2.getStrWidth(title);
+    u8g2.drawStr((SCREEN_WIDTH - tw) / 2, 12, title);
+    u8g2.drawHLine(0, 15, SCREEN_WIDTH);
+
+    // 3 Category Cards
+    u8g2.setFont(u8g2_font_7x14B_tr);
+    for (uint8_t i = 0; i < 3; i++) {
+        int y = 30 + i * 28;
+        if (i == selectedCat) {
+            u8g2.setDrawColor(1);
+            u8g2.drawBox(4, y, SCREEN_WIDTH - 8, 22);
+            u8g2.setDrawColor(0); // Inverted
+        } else {
+            u8g2.setDrawColor(1);
+            u8g2.drawFrame(4, y, SCREEN_WIDTH - 8, 22);
+        }
+        
+        int w = u8g2.getStrWidth(catNames[i]);
+        u8g2.drawStr((SCREEN_WIDTH - w) / 2, y + 16, catNames[i]);
+    }
+    
+    // Bottom hint
+    u8g2.setDrawColor(1);
+    u8g2.drawHLine(0, 116, SCREEN_WIDTH);
+    u8g2.setFont(u8g2_font_5x7_tr);
+    u8g2.drawStr(6, 125, "Click: Select | Hold: Back");
+
+    u8g2.sendBuffer();
+    needsRedraw = true;
+}
+
+void Display::drawFilteredParamList(const ParamDescriptor* allParams, const uint8_t* filteredIndices, uint8_t count, uint8_t selectedIdx, bool editing, uint8_t catIdx) {
     u8g2.drawHLine(0, PARAM_LIST_Y - 2, SCREEN_WIDTH);
     u8g2.setFont(FONT_PARAM_NAME);
     
@@ -210,32 +256,31 @@ void Display::drawParamList(const ParamDescriptor* params, uint8_t count, uint8_
     }
     
     for (uint8_t i = 0; i < visibleRows; i++) {
-        uint8_t idx = startIdx + i;
-        if (idx >= count) break;
+        uint8_t fIdx = startIdx + i;
+        if (fIdx >= count) break;
         
+        uint8_t realIdx = filteredIndices[fIdx];
         int y = PARAM_LIST_Y + (i * PARAM_LIST_ROW_H);
-        bool isSelected = (idx == selectedIdx);
+        bool isSelected = (fIdx == selectedIdx);
         
         if (isSelected) {
             u8g2.setDrawColor(1);
             u8g2.drawBox(0, y, SCREEN_WIDTH, PARAM_LIST_ROW_H);
-            u8g2.setDrawColor(0); // Inverted text for selection
+            u8g2.setDrawColor(0);
         } else {
             u8g2.setDrawColor(1);
         }
         
-        // Parameter name
         if (isSelected && editing) {
             char nameWithIndicator[32];
-            snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", params[idx].name);
+            snprintf(nameWithIndicator, sizeof(nameWithIndicator), ">%s", allParams[realIdx].name);
             u8g2.drawStr(2, y + 8, nameWithIndicator);
         } else {
-            u8g2.drawStr(2, y + 8, params[idx].name);
+            u8g2.drawStr(2, y + 8, allParams[realIdx].name);
         }
         
-        // Formatted value
         char valBuf[32];
-        params[idx].formatValue(valBuf, sizeof(valBuf));
+        allParams[realIdx].formatValue(valBuf, sizeof(valBuf));
         
         int w = u8g2.getStrWidth(valBuf);
         u8g2.drawStr(SCREEN_WIDTH - w - 2, y + 8, valBuf);
@@ -248,10 +293,10 @@ void Display::drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, u
     u8g2.setFont(FONT_STATUS);
     u8g2.setDrawColor(1);
     
-    // State indicator on left
     const char* modeStr = "[PATCH]";
-    if (navState == 2) modeStr = "[PARAM]";
-    else if (navState == 3) modeStr = "[EDIT]";
+    if (navState == 2) modeStr = "[MENU]";
+    else if (navState == 3) modeStr = "[PARAM]";
+    else if (navState == 4) modeStr = "[EDIT]";
 
     char buf[36];
     if (lastNote != 255) {
@@ -268,7 +313,6 @@ void Display::drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, u
 void Display::drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected) {
     u8g2.clearBuffer();
     
-    // Title
     u8g2.setFont(u8g2_font_6x10_tr);
     u8g2.setDrawColor(1);
     const char* title = "-- SELECT ENGINE --";
@@ -276,14 +320,13 @@ void Display::drawInstrumentMenu(const char* names[], uint8_t count, uint8_t sel
     u8g2.drawStr((SCREEN_WIDTH - tw) / 2, 10, title);
     u8g2.drawHLine(0, 13, SCREEN_WIDTH);
 
-    // List of instruments
     u8g2.setFont(u8g2_font_7x14B_tr);
     for (uint8_t i = 0; i < count; i++) {
         int y = 28 + i * 19;
         if (i == selected) {
             u8g2.setDrawColor(1);
             u8g2.drawBox(4, y - 12, SCREEN_WIDTH - 8, 16);
-            u8g2.setDrawColor(0); // Inverted text
+            u8g2.setDrawColor(0);
         } else {
             u8g2.setDrawColor(1);
             u8g2.drawFrame(4, y - 12, SCREEN_WIDTH - 8, 16);

@@ -18,6 +18,7 @@ public:
     void setPatch(int index) override;
     const char *getPatchName(int idx) const override;
 
+    void onParamChanged(uint8_t paramIndex) override;
     const ParamDescriptor *getParams() const override { return _dx7Params; }
     uint8_t getParamCount() const override { return _dx7ParamCount; }
 

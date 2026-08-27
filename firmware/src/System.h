@@ -1,28 +1,29 @@
 #pragma once
 // =============================================================================
-// System.h — Navigation state machine and instrument management
+// System.h — Navigation state machine with Category & FX Menu support
 // =============================================================================
 
 #include <Arduino.h>
 #include "Config.h"
 #include "Instrument.h"
 
-// Forward declarations
 class Display;
 class EncoderInput;
 class CVManager;
 class MidiManager;
 
 // Hierarchical Navigation States:
-// Level 0: ENGINE_MENU   (Top level engine picker)
-// Level 1: PATCH_SELECT  (Main engine preset viewer)
-// Level 2: PARAM_SELECT  (Settings browser)
-// Level 3: PARAM_EDIT    (Setting value adjustment)
+// Level 0: ENGINE_MENU     (Choose engine: DX7, Juno, Analog, Sampler, Piano)
+// Level 1: PATCH_SELECT    (Main engine preset viewer)
+// Level 2: CATEGORY_SELECT (Top Settings Menu: SYNTH | FILTER/ENV | EFFECTS)
+// Level 3: PARAM_SELECT    (Settings list within chosen category)
+// Level 4: PARAM_EDIT      (Adjust setting value)
 enum class NavState : uint8_t {
-    ENGINE_MENU  = 0,   // Level 0: Select Synth Engine
-    PATCH_SELECT = 1,   // Level 1: Browse Presets / Main Screen
-    PARAM_SELECT = 2,   // Level 2: Scroll Parameters / Settings
-    PARAM_EDIT   = 3    // Level 3: Edit Setting Value
+    ENGINE_MENU     = 0,
+    PATCH_SELECT    = 1,
+    CATEGORY_SELECT = 2,
+    PARAM_SELECT    = 3,
+    PARAM_EDIT      = 4
 };
 
 class System {
@@ -30,21 +31,23 @@ public:
     void begin(Display &disp, EncoderInput &enc, CVManager &cv, MidiManager &midi);
     void update();
 
-    // --- State accessors (for Display) ---
-    NavState        getNavState()          const { return _navState; }
-    Instrument*     getActiveInstrument()  const { return _instruments[_currentInstrument]; }
+    // --- State accessors ---
+    NavState        getNavState()               const { return _navState; }
+    Instrument*     getActiveInstrument()       const { return _instruments[_currentInstrument]; }
     uint8_t         getCurrentInstrumentIndex() const { return _currentInstrument; }
-    uint8_t         getNumInstruments()     const { return NUM_INSTRUMENTS; }
+    uint8_t         getNumInstruments()         const { return NUM_INSTRUMENTS; }
     const char*     getInstrumentName(uint8_t i) const;
 
-    // Parameter list state
-    uint8_t         getSelectedParamIndex() const { return _selectedParam; }
-    bool            isEditingParam()        const { return _navState == NavState::PARAM_EDIT; }
+    // Parameter & Category state
+    uint8_t         getSelectedCategory()       const { return _selectedCategory; }
+    uint8_t         getSelectedParamIndex()     const { return _selectedParam; }
+    bool            isEditingParam()            const { return _navState == NavState::PARAM_EDIT; }
+    uint8_t         getFilteredParamCount()     const { return _filteredParamCount; }
+    uint8_t         getFilteredParamRealIndex(uint8_t filteredIdx) const;
 
     // Engine menu state
-    uint8_t         getMenuSelection()      const { return _menuSelection; }
+    uint8_t         getMenuSelection()          const { return _menuSelection; }
 
-    // --- External triggers ---
     void switchInstrument(uint8_t index);
 
 private:
@@ -59,9 +62,14 @@ private:
     Instrument *_instruments[NUM_INSTRUMENTS];
     void initInstruments();
 
-    // Parameter selection
-    uint8_t _selectedParam  = 0;
-    uint8_t _paramScrollTop = 0;
+    // Category & Parameter selection
+    uint8_t _selectedCategory   = 0;
+    uint8_t _selectedParam      = 0; // Index within filtered list
+    uint8_t _paramScrollTop     = 0;
+    uint8_t _filteredIndices[MAX_PARAMS];
+    uint8_t _filteredParamCount = 0;
+
+    void updateFilteredParams();
 
     // Engine menu
     uint8_t _menuSelection = 0;
@@ -69,6 +77,7 @@ private:
     // State machine handlers
     void handleEngineMenu();
     void handlePatchSelect();
+    void handleCategorySelect();
     void handleParamSelect();
     void handleParamEdit();
 

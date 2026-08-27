@@ -11,14 +11,14 @@
 struct JunoState {
     float lfo_rate, lfo_delay_time, dco_lfo, dco_pwm, dco_noise;
     float vcf_freq, vcf_res, vcf_env, vcf_lfo, vcf_kbd, vca_level;
-    float env_a, env_d, env_s, env_r, dco_sub;
+    float env_a_ms, env_d_ms, env_s_pct, env_r_ms, dco_sub;
 
     bool stop_16, stop_8, stop_4;
     bool pwm_manual, vcf_neg, vca_gate, cheap_filter;
-    float hpf; // changed to float for params
+    float hpf;
 
     float saw_level;
-    float chorus; // changed to float
+    float chorus;
 
     void loadFromSysex(int patchIndex) {
         uint8_t sysex[18];
@@ -26,35 +26,37 @@ struct JunoState {
             sysex[i] = pgm_read_byte(&juno_sysex[patchIndex][i]);
         }
 
-        lfo_rate = sysex[0] / 127.0f;
+        lfo_rate = sysex[0] / 127.0f * 20.0f; // in Hz (0-20 Hz)
         lfo_delay_time = sysex[1] / 127.0f;
-        dco_lfo = sysex[2] / 127.0f;
-        dco_noise = sysex[4] / 127.0f;
-        vcf_freq = sysex[5] / 127.0f;
-        vcf_res = sysex[6] / 127.0f;
-        vcf_env = sysex[7] / 127.0f;
-        vcf_lfo = sysex[8] / 127.0f;
-        vcf_kbd = sysex[9] / 127.0f;
+        dco_lfo = sysex[2] / 127.0f * 100.0f;
+        dco_noise = sysex[4] / 127.0f * 100.0f;
+        vcf_freq = sysex[5] / 127.0f * 100.0f;
+        vcf_res = sysex[6] / 127.0f * 100.0f;
+        vcf_env = sysex[7] / 127.0f * 100.0f;
+        vcf_lfo = sysex[8] / 127.0f * 100.0f;
+        vcf_kbd = sysex[9] / 127.0f * 100.0f;
         vca_level = sysex[10] / 127.0f;
-        env_a = sysex[11] / 127.0f;
-        env_d = sysex[12] / 127.0f;
-        env_s = sysex[13] / 127.0f;
-        env_r = sysex[14] / 127.0f;
-        dco_sub = sysex[15] / 127.0f;
+        
+        // Convert to milliseconds
+        env_a_ms = 1.0f + (sysex[11] / 127.0f) * 3000.0f;
+        env_d_ms = 5.0f + (sysex[12] / 127.0f) * 3000.0f;
+        env_s_pct = (sysex[13] / 127.0f) * 100.0f;
+        env_r_ms = 5.0f + (sysex[14] / 127.0f) * 3000.0f;
+        dco_sub = sysex[15] / 127.0f * 100.0f;
 
         stop_16 = (sysex[16] & (1 << 0)) > 0;
         stop_8 = (sysex[16] & (1 << 1)) > 0;
         stop_4 = (sysex[16] & (1 << 2)) > 0;
 
         bool saw_binary = (sysex[16] & (1 << 4)) > 0;
-        saw_level = saw_binary ? 1.0f : 0.0f;
+        saw_level = saw_binary ? 100.0f : 0.0f;
 
         bool orig_pulse_en = (sysex[16] & (1 << 3)) > 0;
         if (!orig_pulse_en) {
             dco_pwm = 0.0f;
         } else {
             float raw_pwm = sysex[3] / 127.0f;
-            dco_pwm = 0.02f + (raw_pwm * 0.98f);
+            dco_pwm = (0.02f + (raw_pwm * 0.98f)) * 100.0f;
         }
 
         uint8_t cho_raw = (sysex[16] >> 5) & 0x03;

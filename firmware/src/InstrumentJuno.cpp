@@ -9,26 +9,29 @@ InstrumentJuno::InstrumentJuno() {
 void InstrumentJuno::init() {
     buildBaseParams();
 
-    _junoParams[0] = PARAM_PERCENT("DCO PWM", &state.dco_pwm);
-    _junoParams[1] = PARAM_PERCENT("Saw Lvl", &state.saw_level);
-    _junoParams[2] = PARAM_PERCENT("Sub Lvl", &state.dco_sub);
-    _junoParams[3] = PARAM_PERCENT("Noise Lvl", &state.dco_noise);
-    _junoParams[4] = PARAM_INT("HPF", "", 0, 3, &state.hpf);
-    _junoParams[5] = PARAM_PERCENT("VCF Freq", &state.vcf_freq);
-    _junoParams[6] = PARAM_PERCENT("VCF Res", &state.vcf_res);
-    _junoParams[7] = PARAM_PERCENT("LFO Rate", &state.lfo_rate);
-    _junoParams[8] = PARAM_PERCENT("VCF LFO", &state.vcf_lfo);
-    _junoParams[9] = PARAM_PERCENT("Env A", &state.env_a);
-    _junoParams[10] = PARAM_PERCENT("Env D", &state.env_d);
-    _junoParams[11] = PARAM_PERCENT("Env S", &state.env_s);
-    _junoParams[12] = PARAM_PERCENT("Env R", &state.env_r);
+    // Category: SYNTH
+    _junoParams[0] = PARAM_PCT("DCO PWM",   0.0f, 100.0f, 2.0f, &state.dco_pwm,   CAT_SYNTH);
+    _junoParams[1] = PARAM_PCT("Saw Lvl",   0.0f, 100.0f, 5.0f, &state.saw_level, CAT_SYNTH);
+    _junoParams[2] = PARAM_PCT("Sub Lvl",   0.0f, 100.0f, 5.0f, &state.dco_sub,   CAT_SYNTH);
+    _junoParams[3] = PARAM_PCT("Noise Lvl", 0.0f, 100.0f, 5.0f, &state.dco_noise, CAT_SYNTH);
+    _junoParams[4] = PARAM_INT("HPF", "",   0, 3,               &state.hpf,       CAT_SYNTH);
+
+    // Category: FILTER & ENV
+    _junoParams[5] = PARAM_PCT("VCF Freq",  0.0f, 100.0f, 2.0f, &state.vcf_freq,  CAT_FILTER_ENV);
+    _junoParams[6] = PARAM_PCT("VCF Res",   0.0f, 100.0f, 2.0f, &state.vcf_res,   CAT_FILTER_ENV);
+    _junoParams[7] = PARAM_PCT("VCF LFO",   0.0f, 100.0f, 5.0f, &state.vcf_lfo,   CAT_FILTER_ENV);
+    _junoParams[8] = PARAM_HZ("LFO Rate",   0.1f, 20.0f,  0.2f, &state.lfo_rate,  CAT_FILTER_ENV);
+    _junoParams[9] = PARAM_MS("Env A",      1.0f, 4000.0f,10.0f,&state.env_a_ms,  CAT_FILTER_ENV);
+    _junoParams[10]= PARAM_MS("Env D",      5.0f, 4000.0f,20.0f,&state.env_d_ms,  CAT_FILTER_ENV);
+    _junoParams[11]= PARAM_PCT("Env S",     0.0f, 100.0f, 5.0f, &state.env_s_pct, CAT_FILTER_ENV);
+    _junoParams[12]= PARAM_MS("Env R",      5.0f, 4000.0f,20.0f,&state.env_r_ms,  CAT_FILTER_ENV);
 
     _junoParamCount = 13;
 
-    // Add base params for Reverb and Delay
-    _junoParams[_junoParamCount++] = _baseParams[8];
-    _junoParams[_junoParamCount++] = _baseParams[9];
-    _junoParams[_junoParamCount++] = _baseParams[10];
+    // Add Category: EFFECTS (FX) from baseParams (Reverb, Rev Damp, Delay Mix, Delay Time, Delay FB)
+    for (int i = 8; i < _baseParamCount; i++) {
+        _junoParams[_junoParamCount++] = _baseParams[i];
+    }
 }
 
 void InstrumentJuno::start() {
@@ -47,6 +50,13 @@ void InstrumentJuno::start() {
     updateOscAmps(JUNO_OSC_SAW);
     updateOscAmps(JUNO_OSC_SUB);
     updateOscAmps(JUNO_OSC_NOISE);
+    updateVcf();
+    updateAdsr();
+    updateLfo();
+    updateHpf();
+
+    configReverb();
+    configDelay();
 
     needsUIRedraw = true;
 }
@@ -77,9 +87,9 @@ void InstrumentJuno::onParamChanged(uint8_t paramIndex) {
     else if (paramIndex == 2) { updateOscAmps(JUNO_OSC_SUB); }
     else if (paramIndex == 3) { updateOscAmps(JUNO_OSC_NOISE); }
     else if (paramIndex == 4) { updateHpf(); }
-    else if (paramIndex == 5 || paramIndex == 6 || paramIndex == 8) { updateVcf(); }
+    else if (paramIndex == 5 || paramIndex == 6 || paramIndex == 7) { updateVcf(); }
+    else if (paramIndex == 8) { updateLfo(); }
     else if (paramIndex >= 9 && paramIndex <= 12) { updateAdsr(); }
-    else if (paramIndex == 7) { updateLfo(); }
     else if (paramIndex >= 13) {
         configReverb();
         configDelay();
@@ -96,52 +106,30 @@ void InstrumentJuno::updateOscAmps(int osc) {
 
     switch (osc) {
     case JUNO_OSC_PWM:
-        if (state.dco_pwm <= 0.01f) target_amp = 0.005f;
+        if (state.dco_pwm <= 1.0f) target_amp = 0.005f;
         else target_amp = fmax(state.vca_level, 0.005f);
         break;
     case JUNO_OSC_SAW:
-        target_amp = fmax(state.saw_level * state.vca_level, 0.005f);
+        target_amp = (state.saw_level > 50.0f) ? fmax(state.vca_level, 0.005f) : 0.005f;
         break;
     case JUNO_OSC_SUB:
-        target_amp = fmax(state.dco_sub * state.vca_level, 0.005f);
+        target_amp = fmax((state.dco_sub / 100.0f) * state.vca_level, 0.005f);
         break;
     case JUNO_OSC_NOISE:
-        target_amp = fmax(state.dco_noise * state.vca_level, 0.005f);
+        target_amp = fmax((state.dco_noise / 100.0f) * state.vca_level, 0.005f);
         break;
     }
 
-    e.amp_coefs[0] = 0.0f;
-    e.amp_coefs[1] = 0.0f;
-    e.amp_coefs[2] = target_amp;
-    e.amp_coefs[3] = state.vca_gate ? 0.0f : 1.0f;
-    e.amp_coefs[4] = state.vca_gate ? 1.0f : 0.0f;
-    e.amp_coefs[5] = 0.0f;
-    e.amp_coefs[6] = 0.0f;
-
+    e.amp_coefs[0] = target_amp;
     amy_add_event(&e);
 }
 
 void InstrumentJuno::updateOscDuty(int osc) {
+    if (osc != JUNO_OSC_PWM) return;
     amy_event e = amy_default_event();
     e.synth = 1;
     e.osc = osc;
-
-    if (state.dco_pwm <= 0.01f) {
-        e.duty_coefs[0] = 0.5f;
-        e.duty_coefs[5] = 0.0f;
-    } else {
-        float active_pwm = (state.dco_pwm - 0.02f) / 0.98f;
-        if (active_pwm < 0.0f) active_pwm = 0.0f;
-
-        if (state.pwm_manual) {
-            e.duty_coefs[0] = 0.5f - (0.45f * active_pwm);
-            e.duty_coefs[5] = 0.0f;
-        } else {
-            e.duty_coefs[0] = 0.5f;
-            e.duty_coefs[5] = 0.5f * active_pwm;
-        }
-    }
-
+    e.duty_coefs[0] = constrain(state.dco_pwm / 100.0f, 0.01f, 0.99f);
     amy_add_event(&e);
 }
 
@@ -149,56 +137,55 @@ void InstrumentJuno::updateVcf() {
     amy_event e = amy_default_event();
     e.synth = 1;
     e.osc = JUNO_OSC_PWM;
-    e.filter_freq_coefs[0] = 13.0f * powf(2.0f, 0.0938f * (state.vcf_freq * 127.0f));
-    e.resonance = 0.7f * powf(2.0f, 4.0f * state.vcf_res);
-    e.filter_freq_coefs[5] = 1.25f * state.vcf_lfo;
+
+    float base_freq = 50.0f + powf(state.vcf_freq / 100.0f, 2.0f) * 8000.0f;
+    e.filter_freq_coefs[0] = base_freq;
+    e.resonance = 0.7f + (state.vcf_res / 100.0f) * 4.3f;
+    e.filter_type = 1;
+
+    e.filter_freq_coefs[2] = (state.vcf_lfo / 100.0f) * 2.0f;
+
     amy_add_event(&e);
 }
 
 void InstrumentJuno::updateAdsr() {
-    uint16_t a_ms = (uint16_t)fmax(6.0f + 8.0f * (state.env_a * 127.0f), 1.0f);
-    uint16_t d_ms = (uint16_t)fmax(80.0f * powf(2.0f, 0.085f * (state.env_d * 127.0f)) - 80.0f, 1.0f);
-    uint16_t r_ms = (uint16_t)fmax(70.0f * powf(2.0f, 0.066f * (state.env_r * 127.0f)) - 70.0f, 1.0f);
-
     amy_event e = amy_default_event();
     e.synth = 1;
 
-    e.eg0_times[0] = a_ms;
+    uint16_t a_ms = (uint16_t)fmax(state.env_a_ms, 1.0f);
+    uint16_t d_ms = (uint16_t)fmax(state.env_d_ms, 1.0f);
+    uint16_t r_ms = (uint16_t)fmax(state.env_r_ms, 1.0f);
+    float s_val   = constrain(state.env_s_pct / 100.0f, 0.0f, 1.0f);
+
+    e.eg0_times[0]  = a_ms;
     e.eg0_values[0] = 1.0f;
-    e.eg0_times[1] = d_ms;
-    e.eg0_values[1] = state.env_s;
-    e.eg0_times[2] = r_ms;
+    e.eg0_times[1]  = d_ms;
+    e.eg0_values[1] = s_val;
+    e.eg0_times[2]  = r_ms;
     e.eg0_values[2] = 0.0f;
 
-    e.osc = JUNO_OSC_PWM; amy_add_event(&e);
-    e.osc = JUNO_OSC_SAW; amy_add_event(&e);
-    e.osc = JUNO_OSC_SUB; amy_add_event(&e);
-    e.osc = JUNO_OSC_NOISE; amy_add_event(&e);
+    amy_add_event(&e);
 }
 
 void InstrumentJuno::updateLfo() {
     amy_event e = amy_default_event();
     e.synth = 1;
     e.osc = JUNO_OSC_LFO;
-
-    e.freq_coefs[0] = fmax(0.6f * powf(2.0f, 0.04f * (state.lfo_rate * 127.0f)) - 0.1f, 0.001f);
-    uint16_t delay_ms = (uint16_t)fmax(18.0f * powf(2.0f, 0.066f * (state.lfo_delay_time * 127.0f)) - 13.0f, 1.0f);
-
-    e.eg0_times[0] = delay_ms;
-    e.eg0_values[0] = 1.0f;
-    e.eg0_times[1] = 10000;
-    e.eg0_values[1] = 0.0f;
-
+    e.freq_coefs[0] = state.lfo_rate;
     amy_add_event(&e);
 }
 
 void InstrumentJuno::updateHpf() {
     amy_event e = amy_default_event();
     e.synth = 1;
-    int hpf_val = (int)state.hpf;
-    if (hpf_val == 0) { e.eq_l = 7; e.eq_m = -3; e.eq_h = -3; }
-    else if (hpf_val == 1) { e.eq_l = 0; e.eq_m = 0; e.eq_h = 0; }
-    else if (hpf_val == 2) { e.eq_l = -8; e.eq_m = 0; e.eq_h = 0; }
-    else { e.eq_l = -15; e.eq_m = 8; e.eq_h = 8; }
+    e.osc = JUNO_OSC_PWM;
+
+    float hpf_freq = 20.0f;
+    if (state.hpf == 1) hpf_freq = 150.0f;
+    else if (state.hpf == 2) hpf_freq = 300.0f;
+    else if (state.hpf == 3) hpf_freq = 600.0f;
+
+    e.filter_freq_coefs[0] = hpf_freq;
+    e.filter_type = 2; // Highpass
     amy_add_event(&e);
 }

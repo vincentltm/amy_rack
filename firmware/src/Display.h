@@ -5,7 +5,6 @@
 #include "Instrument.h"
 #include "ParamDefs.h"
 
-// Forward declarations
 class System;
 class MidiManager;
 
@@ -14,16 +13,13 @@ public:
     Display();
     void begin();
     
-    // System-level update
     void update(System& sys, MidiManager& midi);
     void update(System& sys);
 
-    // Direct parameter update
-    void update(Instrument* inst, const ParamDescriptor* params, uint8_t paramCount, uint8_t selectedIdx, bool editing, uint8_t midiCh, uint8_t lastNote, bool gateActive);
-    
     void drawHeader(const char* instName, const char* patchName, int patchIndex = -1);
     void drawInstrumentUI(Instrument* inst);
-    void drawParamList(const ParamDescriptor* params, uint8_t count, uint8_t selectedIdx, bool editing);
+    void drawCategoryMenu(uint8_t selectedCat);
+    void drawFilteredParamList(const ParamDescriptor* allParams, const uint8_t* filteredIndices, uint8_t count, uint8_t selectedIdx, bool editing, uint8_t catIdx);
     void drawStatusBar(uint8_t midiCh, uint8_t lastNote, bool gateActive, uint8_t navState = 0);
     void drawInstrumentMenu(const char* names[], uint8_t count, uint8_t selected);
     void showSplash();
@@ -31,11 +27,11 @@ public:
     U8G2& getU8G2() { return u8g2; }
 
 private:
-    // U8G2_SH1107_SEEED_128X128 has default_x_offset = 0 (correct for 128x128 Adafruit/generic displays)
     U8G2_SH1107_SEEED_128X128_F_HW_I2C u8g2;
     
     Instrument* lastInst = nullptr;
     uint8_t lastSelectedIdx = 255;
+    uint8_t lastCategory = 255;
     bool lastEditing = false;
     uint8_t lastMidiCh = 255;
     uint8_t lastNote = 255;

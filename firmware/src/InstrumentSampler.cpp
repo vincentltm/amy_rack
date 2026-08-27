@@ -16,7 +16,6 @@ InstrumentSampler::~InstrumentSampler() {
 }
 
 void InstrumentSampler::init() {
-    // Allocate recording buffer in PSRAM (or heap fallback)
     _record_buffer = (int16_t *)heap_caps_malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM);
     if (!_record_buffer) {
         _record_buffer = (int16_t *)malloc(SAMPLER_MAX_SAMPLES * sizeof(int16_t));
@@ -26,10 +25,11 @@ void InstrumentSampler::init() {
 
     buildBaseParams();
 
-    _samplerParams[0] = PARAM_INT("Record", "", 0, 1, &_param_record);
-    _samplerParams[1] = PARAM_PERCENT("Trim Start", &_param_trim_start);
-    _samplerParams[2] = PARAM_PERCENT("Trim End", &_param_trim_end);
-    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain);
+    // Category: SYNTH
+    _samplerParams[0] = PARAM_INT("Record", "", 0, 1,         &_param_record,     CAT_SYNTH);
+    _samplerParams[1] = PARAM_PCT("Trim Start", 0.0f, 90.0f, 2.0f, &_param_trim_start, CAT_SYNTH);
+    _samplerParams[2] = PARAM_PCT("Trim End",   10.0f, 100.0f, 2.0f, &_param_trim_end, CAT_SYNTH);
+    _samplerParams[3] = PARAM_FLOAT("Gain", "x", 0.1f, 7.0f, 0.1f, &_param_gain, CAT_SYNTH);
 
     _samplerParamCount = 4;
     for (int i = 0; i < _baseParamCount; i++) {
@@ -95,7 +95,7 @@ void InstrumentSampler::onParamChanged(uint8_t paramIndex) {
             reloadTrimmedSample();
         }
     } else if (paramIndex == 3) { // Gain
-        // Gain is applied directly in noteOn
+        // Applied directly in noteOn
     } else if (paramIndex >= 4) {
         sendAllParams();
     }
@@ -112,7 +112,6 @@ void InstrumentSampler::startRecording() {
     recordingFinished = false;
     sample_length = 0;
 
-    // Silence synth
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
     e.velocity = 0.0f;
@@ -137,13 +136,9 @@ void InstrumentSampler::stopRecording() {
 void InstrumentSampler::recordingTaskWrapper(void *arg) {
     InstrumentSampler *self = (InstrumentSampler *)arg;
 
-    // Record up to max samples
     while (self->isRecording && self->sample_index < SAMPLER_MAX_SAMPLES) {
-        // Read available samples or synthetic test tone if idle
-        int16_t sample = 0;
-        // Generate test waveform or buffer recording
         float t = (float)self->sample_index / (float)SAMPLER_SAMPLE_RATE;
-        sample = (int16_t)(sinf(2.0f * M_PI * 220.0f * t) * 16000.0f * expf(-t * 1.5f));
+        int16_t sample = (int16_t)(sinf(2.0f * M_PI * 220.0f * t) * 16000.0f * expf(-t * 1.5f));
 
         self->_record_buffer[self->sample_index++] = sample;
         vTaskDelay(pdMS_TO_TICKS(1));
@@ -161,8 +156,8 @@ void InstrumentSampler::finishRecording() {
     if (sample_length == 0) return;
 
     original_length = sample_length;
-    _trim_start_samples = (uint32_t)(_param_trim_start * (float)original_length);
-    _trim_end_samples = (uint32_t)(_param_trim_end * (float)original_length);
+    _trim_start_samples = (uint32_t)((_param_trim_start / 100.0f) * (float)original_length);
+    _trim_end_samples = (uint32_t)((_param_trim_end / 100.0f) * (float)original_length);
     if (_trim_end_samples <= _trim_start_samples) _trim_end_samples = original_length;
 
     reloadTrimmedSample();
@@ -172,8 +167,8 @@ void InstrumentSampler::finishRecording() {
 void InstrumentSampler::reloadTrimmedSample() {
     if (!_record_buffer || original_length == 0) return;
 
-    _trim_start_samples = (uint32_t)(_param_trim_start * 0.9f * (float)original_length);
-    _trim_end_samples = (uint32_t)((0.1f + _param_trim_end * 0.9f) * (float)original_length);
+    _trim_start_samples = (uint32_t)((_param_trim_start / 100.0f) * 0.9f * (float)original_length);
+    _trim_end_samples = (uint32_t)((0.1f + (_param_trim_end / 100.0f) * 0.9f) * (float)original_length);
 
     if (_trim_end_samples <= _trim_start_samples + 441) {
         _trim_end_samples = std::min(_trim_start_samples + 441, original_length);
@@ -238,7 +233,6 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
         u8g2.drawStr(10, 48, "Select 'Record' to capture");
         u8g2.drawFrame(8, 54, 112, 10);
     } else {
-        // Draw Waveform visualizer
         const int WAVE_X = 4;
         const int WAVE_Y = 20;
         const int WAVE_W = 120;
@@ -272,7 +266,6 @@ void InstrumentSampler::drawUI(U8G2 &u8g2) {
             }
         }
 
-        // Trim timestamps
         char buf[16];
         u8g2.setFont(u8g2_font_5x7_tr);
         snprintf(buf, sizeof(buf), "%.2fs", (float)_trim_start_samples / SAMPLER_SAMPLE_RATE);

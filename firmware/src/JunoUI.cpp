@@ -99,10 +99,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t dutyWidth = dutyRight - dutyLeft;
     uint8_t dutyHeight = dutyBottom - dutyTop;
 
-    float active_pwm = 0.0f;
-    if (state.dco_pwm > 0.02f) {
-        active_pwm = (state.dco_pwm - 0.02f) / 0.98f;
-    }
+    float active_pwm = constrain(state.dco_pwm / 100.0f, 0.0f, 1.0f);
 
     if (active_pwm <= 0.01f) {
         u8g2.drawHLine(dutyLeft, dutyBottom, dutyWidth);
@@ -125,18 +122,18 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t barMaxHeight = graphBottom - dcoSplitY - 5;
 
     uint8_t sawBarX = dcoX + 1 + barSpacing;
-    uint8_t sawBarHeight = (uint8_t)(state.saw_level * barMaxHeight);
+    uint8_t sawBarHeight = (uint8_t)((state.saw_level / 100.0f) * barMaxHeight);
     u8g2.drawLine(sawBarX, graphBottom - 3, sawBarX + barWidth, graphBottom - 3 - sawBarHeight);
     u8g2.drawVLine(sawBarX + barWidth, graphBottom - 2 - sawBarHeight, sawBarHeight);
 
     uint8_t subBarX = sawBarX + barWidth + barSpacing;
-    uint8_t subBarHeight = (uint8_t)(state.dco_sub * barMaxHeight);
+    uint8_t subBarHeight = (uint8_t)((state.dco_sub / 100.0f) * barMaxHeight);
     u8g2.drawVLine(subBarX, graphBottom - 2 - subBarHeight, subBarHeight);
     u8g2.drawHLine(subBarX, graphBottom - 3 - subBarHeight, barWidth+1);
     u8g2.drawVLine(subBarX + barWidth, graphBottom - 2 - subBarHeight, subBarHeight);
 
     uint8_t noiseBarX = subBarX + barWidth + barSpacing;
-    uint8_t noiseBarHeight = std::max((uint8_t)(state.dco_noise * (barMaxHeight+1)), (uint8_t)1);
+    uint8_t noiseBarHeight = std::max((uint8_t)((state.dco_noise / 100.0f) * (barMaxHeight+1)), (uint8_t)1);
     u8g2.drawBox(noiseBarX, graphBottom - 2 - noiseBarHeight, barWidth, noiseBarHeight);
 
     // Column 2: HPF
@@ -165,10 +162,10 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t vcfLineY[4];
     drawSlider(u8g2, vcfCenterX, vcfSliderTop, vcfSliderBottom, vcfLineY);
 
-    float freqPos = 1.0f - state.vcf_freq;
+    float freqPos = 1.0f - (state.vcf_freq / 100.0f);
     uint8_t freqTipY = (uint8_t)(vcfSliderTop + freqPos * (vcfSliderBottom - vcfSliderTop) + 0.5f);
 
-    float resPos = 1.0f - state.vcf_res;
+    float resPos = 1.0f - (state.vcf_res / 100.0f);
     uint8_t resTipY = (uint8_t)(vcfSliderTop + resPos * (vcfSliderBottom - vcfSliderTop) + 0.5f);
 
     drawDualSlider(u8g2, vcfCenterX, freqTipY, resTipY, 'F', 'R', graphBottom, graphTop);
@@ -183,11 +180,11 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t lfoLineY[4];
     drawSlider(u8g2, lfoCenterX, lfoSliderTop, lfoSliderBottom, lfoLineY);
 
-    float lfoFreqPos = 1.0f - state.lfo_rate;
-    uint8_t lfoFreqTipY = (uint8_t)(lfoSliderTop + lfoFreqPos * (lfoSliderBottom - lfoSliderTop) + 0.5f);
+    float lfoFreqPos = 1.0f - (state.lfo_rate / 20.0f);
+    uint8_t lfoFreqTipY = (uint8_t)(lfoSliderTop + lfoFreqPos * (vcfSliderBottom - vcfSliderTop) + 0.5f);
 
-    float lfoAmpPos = 1.0f - state.vcf_lfo;
-    uint8_t lfoAmpTipY = (uint8_t)(lfoSliderTop + lfoAmpPos * (lfoSliderBottom - lfoSliderTop) + 0.5f);
+    float lfoAmpPos = 1.0f - (state.vcf_lfo / 100.0f);
+    uint8_t lfoAmpTipY = (uint8_t)(lfoSliderTop + lfoAmpPos * (vcfSliderBottom - vcfSliderTop) + 0.5f);
 
     drawDualSlider(u8g2, lfoCenterX, lfoFreqTipY, lfoAmpTipY, 'F', 'A', graphBottom, graphTop);
 
@@ -203,9 +200,9 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
 
     uint8_t maxSegmentWidth = (uint8_t)(envGraphWidth / 3.1f);
 
-    uint8_t attackWidth =  std::max((uint8_t)1, (uint8_t)(state.env_a * maxSegmentWidth));
-    uint8_t decayWidth =   std::max((uint8_t)1, (uint8_t)(state.env_d * maxSegmentWidth));
-    uint8_t releaseWidth = std::max((uint8_t)1, (uint8_t)(state.env_r * maxSegmentWidth));
+    uint8_t attackWidth =  std::max((uint8_t)1, (uint8_t)((state.env_a_ms / 3000.0f) * maxSegmentWidth));
+    uint8_t decayWidth =   std::max((uint8_t)1, (uint8_t)((state.env_d_ms / 3000.0f) * maxSegmentWidth));
+    uint8_t releaseWidth = std::max((uint8_t)1, (uint8_t)((state.env_r_ms / 3000.0f) * maxSegmentWidth));
     uint8_t sustainWidth = std::max((uint8_t)1, (uint8_t)(envGraphWidth - (attackWidth + decayWidth + releaseWidth)));
 
     uint8_t attackX = envGraphLeft;
@@ -213,7 +210,7 @@ void InstrumentJuno::drawUI(U8G2 &u8g2) {
     uint8_t decayX = attackX + attackWidth;
     uint8_t decayY = envGraphTop;
     uint8_t sustainX = decayX + decayWidth;
-    uint8_t sustainY = envGraphTop + (uint8_t)((1.0f - state.env_s) * envGraphHeight);
+    uint8_t sustainY = envGraphTop + (uint8_t)((1.0f - (state.env_s_pct / 100.0f)) * envGraphHeight);
     uint8_t releaseStartX = sustainX + sustainWidth;
     uint8_t releaseStartY = sustainY;
     uint8_t endX = envGraphRight;

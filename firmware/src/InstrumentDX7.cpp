@@ -106,6 +106,7 @@ void InstrumentDX7::start() {
     e.patch_number = patch + 128;
     amy_add_event(&e);
 
+    sendAllParams();
     needsUIRedraw = true;
 }
 
@@ -126,6 +127,8 @@ void InstrumentDX7::setPatch(int index) {
     e.synth = getSynthChannel();
     e.patch_number = patch + 128;
     amy_add_event(&e);
+
+    sendAllParams();
     needsUIRedraw = true;
 }
 
@@ -139,30 +142,38 @@ void InstrumentDX7::drawUI(U8G2 &u8g2) {
     if (algoNum < 1 || algoNum > 32) algoNum = 1;
     const DX7Algo &currentAlgo = dx7_algorithms[algoNum - 1];
 
-    // Draw algorithm label
     u8g2.setFont(u8g2_font_5x7_tr);
     u8g2.setDrawColor(1);
     char algoBuf[16];
-    snprintf(algoBuf, sizeof(algoBuf), "ALGORITHM %d", algoNum);
+    snprintf(algoBuf, sizeof(algoBuf), "ALGO %d", algoNum);
     u8g2.drawStr(2, 26, algoBuf);
 
     int base_y = 52;
     draw_algo(u8g2, currentAlgo.top, currentAlgo.bottom, currentAlgo.carriers, base_y);
 }
 
+void InstrumentDX7::onParamChanged(uint8_t paramIndex) {
+    sendAdsr();
+    sendFilter();
+    configReverb();
+    configDelay();
+    needsUIRedraw = true;
+}
+
 void InstrumentDX7::sendAdsr() {
     amy_event e = amy_default_event();
     e.synth = getSynthChannel();
 
-    uint16_t a_ms = (uint16_t)fmax(params.attack * 1000.0f, 1.0f);
-    uint16_t d_ms = (uint16_t)fmax(params.decay * 1000.0f, 1.0f);
-    uint16_t r_ms = (uint16_t)fmax(params.release * 1000.0f, 1.0f);
+    uint16_t a_ms = (uint16_t)fmax(params.attack_ms, 1.0f);
+    uint16_t d_ms = (uint16_t)fmax(params.decay_ms, 1.0f);
+    uint16_t r_ms = (uint16_t)fmax(params.release_ms, 1.0f);
+    float s_val   = constrain(params.sustain_pct / 100.0f, 0.0f, 1.0f);
     
     e.eg1_times[0] = a_ms;
     e.eg1_values[0] = 1.0f;
 
     e.eg1_times[1] = d_ms;
-    e.eg1_values[1] = params.sustain;
+    e.eg1_values[1] = s_val;
 
     e.eg1_times[2] = r_ms;
     e.eg1_values[2] = 0.0f;

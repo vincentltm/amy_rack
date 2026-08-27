@@ -39,37 +39,54 @@ void System::initInstruments() {
 
 void System::update() {
     switch (_navState) {
-        case NavState::ENGINE_MENU:  handleEngineMenu();  break;
-        case NavState::PATCH_SELECT: handlePatchSelect(); break;
-        case NavState::PARAM_SELECT: handleParamSelect(); break;
-        case NavState::PARAM_EDIT:   handleParamEdit();   break;
+        case NavState::ENGINE_MENU:     handleEngineMenu();     break;
+        case NavState::PATCH_SELECT:    handlePatchSelect();    break;
+        case NavState::CATEGORY_SELECT: handleCategorySelect(); break;
+        case NavState::PARAM_SELECT:    handleParamSelect();    break;
+        case NavState::PARAM_EDIT:      handleParamEdit();      break;
     }
 
     Instrument *inst = getActiveInstrument();
     if (inst) inst->update();
 }
 
+void System::updateFilteredParams() {
+    Instrument *inst = getActiveInstrument();
+    _filteredParamCount = 0;
+    if (!inst) return;
+
+    const ParamDescriptor *params = inst->getParams();
+    uint8_t totalParams = inst->getParamCount();
+
+    for (uint8_t i = 0; i < totalParams; i++) {
+        if (params[i].category == (ParamCategory)_selectedCategory) {
+            _filteredIndices[_filteredParamCount++] = i;
+        }
+    }
+}
+
+uint8_t System::getFilteredParamRealIndex(uint8_t filteredIdx) const {
+    if (filteredIdx < _filteredParamCount) {
+        return _filteredIndices[filteredIdx];
+    }
+    return 0;
+}
+
 // -----------------------------------------------------------------------------
 // Level 0: ENGINE_MENU (Select synth engine)
-//   - Turn: scroll engines
-//   - Click: select engine -> go DOWN to Level 1 (PATCH_SELECT)
-//   - Long press: cancel -> go DOWN to Level 1 (PATCH_SELECT)
 // -----------------------------------------------------------------------------
 void System::handleEngineMenu() {
-    // Click -> Select engine and go DOWN to Level 1
     if (_encoder->wasPressed()) {
         switchInstrument(_menuSelection);
         enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Long press -> Cancel and return to Level 1
     if (_encoder->wasLongPressed()) {
         enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Turn -> Scroll through engine choices
     int delta = _encoder->getDelta();
     if (delta != 0) {
         int newSel = (int)_menuSelection + delta;
@@ -80,9 +97,6 @@ void System::handleEngineMenu() {
 
 // -----------------------------------------------------------------------------
 // Level 1: PATCH_SELECT (Browse presets on main engine screen)
-//   - Turn: scroll presets (if available)
-//   - Click: go DOWN to Level 2 (PARAM_SELECT / settings)
-//   - Long press: go UP to Level 0 (ENGINE_MENU)
 // -----------------------------------------------------------------------------
 void System::handlePatchSelect() {
     // Long press -> Go UP to Level 0 (ENGINE_MENU)
@@ -92,11 +106,9 @@ void System::handlePatchSelect() {
         return;
     }
 
-    // Click -> Go DOWN to Level 2 (PARAM_SELECT)
+    // Click -> Go DOWN to Level 2 (CATEGORY_SELECT)
     if (_encoder->wasPressed()) {
-        _selectedParam = 0;
-        _paramScrollTop = 0;
-        enterState(NavState::PARAM_SELECT);
+        enterState(NavState::CATEGORY_SELECT);
         return;
     }
 
@@ -109,47 +121,69 @@ void System::handlePatchSelect() {
             newPatch = constrain(newPatch, 0, inst->getPatchCount() - 1);
             inst->setPatch(newPatch);
             inst->needsUIRedraw = true;
-        } else if (inst && inst->getParamCount() > 0) {
-            // If no presets, turning directly scrolls to settings
-            _selectedParam = 0;
-            enterState(NavState::PARAM_SELECT);
+        } else {
+            enterState(NavState::CATEGORY_SELECT);
         }
     }
 }
 
 // -----------------------------------------------------------------------------
-// Level 2: PARAM_SELECT (Browse settings list)
-//   - Turn: scroll settings
-//   - Click: go DOWN to Level 3 (PARAM_EDIT highlighted setting)
-//   - Long press: go UP to Level 1 (PATCH_SELECT)
+// Level 2: CATEGORY_SELECT (Choose Settings Category: SYNTH, FILTER/ENV, FX)
 // -----------------------------------------------------------------------------
-void System::handleParamSelect() {
-    Instrument *inst = getActiveInstrument();
-    if (!inst) return;
-
-    uint8_t paramCount = inst->getParamCount();
-    if (paramCount == 0) {
-        enterState(NavState::PATCH_SELECT);
-        return;
-    }
-
+void System::handleCategorySelect() {
     // Long press -> Go UP to Level 1 (PATCH_SELECT)
     if (_encoder->wasLongPressed()) {
         enterState(NavState::PATCH_SELECT);
         return;
     }
 
-    // Click -> Go DOWN to Level 3 (PARAM_EDIT)
+    // Click -> Select category and go DOWN to Level 3 (PARAM_SELECT)
+    if (_encoder->wasPressed()) {
+        _selectedParam = 0;
+        _paramScrollTop = 0;
+        updateFilteredParams();
+        enterState(NavState::PARAM_SELECT);
+        return;
+    }
+
+    // Turn -> Scroll through categories
+    int delta = _encoder->getDelta();
+    if (delta != 0) {
+        int newCat = (int)_selectedCategory + delta;
+        newCat = constrain(newCat, 0, (int)CAT_COUNT - 1);
+        _selectedCategory = (uint8_t)newCat;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Level 3: PARAM_SELECT (Browse settings list within chosen category)
+// -----------------------------------------------------------------------------
+void System::handleParamSelect() {
+    Instrument *inst = getActiveInstrument();
+    if (!inst) return;
+
+    if (_filteredParamCount == 0) {
+        enterState(NavState::CATEGORY_SELECT);
+        return;
+    }
+
+    // Long press -> Go UP to Level 2 (CATEGORY_SELECT)
+    if (_encoder->wasLongPressed()) {
+        enterState(NavState::CATEGORY_SELECT);
+        return;
+    }
+
+    // Click -> Go DOWN to Level 4 (PARAM_EDIT)
     if (_encoder->wasPressed()) {
         enterState(NavState::PARAM_EDIT);
         return;
     }
 
-    // Turn -> Scroll through parameters
+    // Turn -> Scroll through parameter list
     int delta = _encoder->getDelta();
     if (delta != 0) {
         int newSel = (int)_selectedParam + delta;
-        newSel = constrain(newSel, 0, (int)paramCount - 1);
+        newSel = constrain(newSel, 0, (int)_filteredParamCount - 1);
         _selectedParam = (uint8_t)newSel;
 
         uint8_t visibleRows = PARAM_LIST_H / PARAM_LIST_ROW_H;
@@ -162,24 +196,21 @@ void System::handleParamSelect() {
 }
 
 // -----------------------------------------------------------------------------
-// Level 3: PARAM_EDIT (Adjust setting value)
-//   - Turn: tweak value in real time
-//   - Click: confirm and go UP to Level 2 (PARAM_SELECT)
-//   - Long press: confirm and go UP to Level 2 (PARAM_SELECT)
+// Level 4: PARAM_EDIT (Adjust setting value)
 // -----------------------------------------------------------------------------
 void System::handleParamEdit() {
     Instrument *inst = getActiveInstrument();
     if (!inst) return;
 
-    const ParamDescriptor *params = inst->getParams();
-    uint8_t paramCount = inst->getParamCount();
-
-    if (_selectedParam >= paramCount) {
+    if (_selectedParam >= _filteredParamCount) {
         enterState(NavState::PARAM_SELECT);
         return;
     }
 
-    // Click or Long press -> Confirm & go UP to Level 2
+    uint8_t realIdx = _filteredIndices[_selectedParam];
+    const ParamDescriptor *params = inst->getParams();
+
+    // Click or Long press -> Confirm & go UP to Level 3
     if (_encoder->wasPressed() || _encoder->wasLongPressed()) {
         enterState(NavState::PARAM_SELECT);
         return;
@@ -189,8 +220,8 @@ void System::handleParamEdit() {
     int delta = _encoder->getDelta();
     if (delta != 0) {
         bool accel = (abs(delta) >= ENCODER_ACCEL_THRESHOLD);
-        params[_selectedParam].adjust(delta, accel);
-        inst->onParamChanged(_selectedParam);
+        params[realIdx].adjust(delta, accel);
+        inst->onParamChanged(realIdx);
         inst->needsUIRedraw = true;
     }
 }
@@ -217,6 +248,7 @@ void System::switchInstrument(uint8_t index) {
 
     _selectedParam = 0;
     _paramScrollTop = 0;
+    updateFilteredParams();
 }
 
 const char* System::getInstrumentName(uint8_t i) const {
